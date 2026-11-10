@@ -129,6 +129,8 @@ function answer(it, a) {
   setStatus(it.id, a === "y" ? "yes" : "no");
   if (a === "y") { dropSkip(it.id, day); }
   save();
+  if (a === "y" && /ЗАВТРА РАБОТА/i.test(it.name)) setTimeout(tomorrowShift, 50);   // «завтра работаю?» → место, описание, время, будильник
+  if (a === "y" && it.name === "ТРАТЫ") setTimeout(() => spendAdd(today()), 50);
   return a === "n" && !SPECIAL.includes(it.name);   // true = спросить причину
 }
 function dropSkip(hid, day) { S.db.skip_log = T("skip_log").filter(r => !(r.habit_id === hid && r.day === day)); }
@@ -289,6 +291,7 @@ function render() {
   if (tab === "day") renderDay();
   else if (tab === "plan") renderPlan();
   else if (tab === "pomo") renderPomo();
+  else if (tab === "work") renderWork();
   else if (tab === "fail") renderFail();
   else if (tab === "set") renderSet();
   else shell(`<div class="title">СКОРО</div><div class="dim">ЭТОТ РАЗДЕЛ ПЕРЕНОСИТСЯ СЛЕДУЮЩИМ ЭТАПОМ.<br>ПОКА ОН В БОТЕ.</div>`);
@@ -296,6 +299,7 @@ function render() {
 }
 function tickAll() {
   if (typeof pomoTick === "function") pomoTick();
+  if (typeof workTick === "function") workTick();
   if (screen === "run") return tickRun();
   if (screen === "train") return tickTrain();
   const cd = document.getElementById("cd");
