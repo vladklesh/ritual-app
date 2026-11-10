@@ -52,7 +52,7 @@ input::placeholder{color:var(--dim)}
 .week div{flex:1;text-align:center;background:var(--bar);border-radius:10px;padding:8px 0;font-size:13px}
 .week b{display:block;font-size:20px;font-weight:600;margin-top:2px}
 .tabs{display:flex;justify-content:space-around;border-top:1px solid var(--line);padding-top:6px;margin-top:6px}
-.tabs button{font-size:26px;padding:8px 14px;opacity:.55;border-radius:10px}
+.tabs button{font-size:22px;padding:8px 9px;opacity:.55;border-radius:10px}
 .tabs button.on{opacity:1;background:var(--bar)}
 .item{font-size:clamp(22px,6vw,30px);font-weight:600;text-align:center;padding:26px 8px 12px;line-height:1.25;white-space:pre-line}
 .acts{display:flex;gap:10px;justify-content:center;padding:10px 0}
@@ -64,12 +64,50 @@ input::placeholder{color:var(--dim)}
 .reasons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0}
 .reasons button{font-size:34px;padding:12px 0;background:var(--bar);border-radius:12px}
 .reasons small{display:block;font-size:11px;margin-top:2px}
+.scroll.flexy{display:flex;flex-direction:column;overflow:hidden}
+.phead{display:flex;align-items:center;gap:6px;padding:4px 0}
+.phead .pt{flex:1;text-align:center;font-size:19px;font-weight:600}
+.phead button{font-size:22px;padding:2px 12px;background:var(--bar);border-radius:10px}
+.pviews{display:flex;gap:6px;padding:4px 0}
+.pviews button{flex:1;font-size:16px;font-weight:600;padding:7px;background:var(--bar);border-radius:10px;opacity:.65}
+.pviews button.on{opacity:1;background:#fff;color:var(--bg)}
+.pdays{display:flex;padding-left:40px}
+.pdays div{flex:1;text-align:center;font-size:12px;color:var(--dim);padding:2px 0}
+.pdays b{display:inline-block;min-width:30px;height:30px;line-height:30px;border-radius:15px;font-size:18px;font-weight:600;color:#fff}
+.pdays .td b{background:#fff;color:var(--bg)}
+.pgrid{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+.pin{position:relative;display:flex}
+.gut{width:40px;flex:none;position:relative}
+.gut span{position:absolute;right:4px;font-size:11px;color:var(--dim);transform:translateY(-50%)}
+.pcols{flex:1;display:grid}
+.pcol{position:relative;border-left:1px solid rgba(255,255,255,.25);background-image:linear-gradient(rgba(255,255,255,.2) 1px,transparent 1px)}
+.ev{position:absolute;border-radius:6px;padding:2px 4px;font-size:12px;line-height:1.15;overflow:hidden;color:#fff;border:1px solid rgba(0,0,0,.3)}
+.nowl{position:absolute;left:0;right:0;height:2px;background:#fff;z-index:2;pointer-events:none}
+.pmon{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding-top:4px}
+.pmon .wd{text-align:center;font-size:12px;color:var(--dim)}
+.mc{background:var(--bar);border-radius:8px;min-height:54px;padding:4px 2px;font-size:15px;text-align:center}
+.mc.out{opacity:.4}.mc.td{background:#fff;color:var(--bg);font-weight:700}
+.mc i{display:inline-block;width:7px;height:7px;border-radius:4px;margin:1px}
+.r2{display:flex;gap:8px;margin-top:8px}
+.chips{display:flex;gap:8px;margin-top:8px}
+.chips button{flex:1;padding:10px 0;border-radius:10px;background:rgba(255,255,255,.15);font-size:16px;font-weight:600}
+.phase{text-align:center;font-size:18px;font-weight:700;letter-spacing:.08em;padding-top:12px}
+.pq{background:var(--bar);border-radius:12px;padding:10px;margin:8px 0;font-size:17px;text-align:center}
+.pq .pt{padding:2px 0 4px}
+.pq .acts{padding:8px 0 0}
+.sqs{display:flex;flex-wrap:wrap;gap:5px}
+.sq{width:46px;padding:4px 0;border-radius:8px;background:var(--bar);text-align:center;font-size:11px;opacity:.5}
+.sq.y{background:#2f8f5b;opacity:1}.sq.n{background:#c04a47;opacity:1}.sq.p{background:#b59a2e;opacity:1}.sq.c{outline:2px solid #fff;opacity:1}
+.sq b{display:block;font-size:16px;font-weight:400}
+input[type=time],input[type=date]{color-scheme:dark;min-height:42px}
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script src="app.js?v=3"></script>
-<script src="training.js?v=3"></script>
-<script src="main.js?v=3"></script>
+<script src="app.js?v=4"></script>
+<script src="training.js?v=4"></script>
+<script src="plan.js?v=4"></script>
+<script src="pomo.js?v=4"></script>
+<script src="main.js?v=4"></script>
 </body>
 </html>
