@@ -27,7 +27,7 @@ function renderTasks() {
 }
 function tMain() {
   const done = goalsAll().filter(g => g.done_on).length, open = T("tasks").filter(t => !t.done).length;
-  W(`<div class="title">🧳</div>` + B("⬅", () => { tab = screen = "set"; render(); }) + B(`🎯 ЦЕЛИ · ТОП-100: ${done}/${goalsAll().length}`, () => tgo("goals")) + B("🧭 СФЕРЫ ЖИЗНИ", () => tgo("spheres")) +
+  W(`<div class="title">🧳</div>` + B(`🎯 ЦЕЛИ · ТОП-100: ${done}/${goalsAll().length}`, () => tgo("goals")) + B("🧭 СФЕРЫ ЖИЗНИ", () => tgo("spheres")) +
     B("🧳 ПРОЕКТЫ", () => tgo("projects")) + B(`✅ ЗАДАЧИ${open ? " · " + open : ""}`, () => tgo("tasks")) +
     B("🗓 ИТОГИ МЕСЯЦА", reviewStart) + B("📜 ПРОШЛЫЕ ИТОГИ", () => tgo("revs")) + B("♾️ ПРИВЫЧКИ", () => { screen = "edit"; render(); }));
 }

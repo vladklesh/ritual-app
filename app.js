@@ -285,7 +285,7 @@ function paintRun(p) {
 }
 
 // ================================================================== ЭКРАНЫ
-const TABS = [["day", "DAY"], ["plan", "📅"], ["pomo", "🍅"], ["work", "🤵‍♂️"], ["set", "⚙"]];
+const TABS = [["day", "DAY"], ["plan", "📅"], ["pomo", "🍅"], ["tasks", "🧳"], ["work", "🤵‍♂️"], ["set", "⚙"]];
 function lastSun2130() {
   const n = new Date(), d = new Date(n); d.setHours(21, 30, 0, 0); d.setDate(d.getDate() - d.getDay());
   if (d > n) d.setDate(d.getDate() - 7);
@@ -295,7 +295,7 @@ function exportDue() { if (!S.since) { S.since = Date.now(); save(); } return (S
 function shell(inner) {
   const ban = exportDue() ? `<div class="warn" id="exw">⬆ ВС 21:30 · СОХРАНИ КОПИЮ ДАННЫХ (НАЖМИ)</div>` : "";
   $app.innerHTML = `<div class="scroll" id="body">${ban}${inner}</div><div class="tabs">` +
-    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] || (t[0] === "set" && ["fail", "tasks"].includes(tab)) ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
+    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] || (t[0] === "set" && tab === "fail") ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
   $app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; screen = tab; render(); });
   const ew = document.getElementById("exw"); if (ew) ew.onclick = exportAll;
 }
@@ -397,13 +397,12 @@ function renderSet() {
   const last = S.lastExport ? new Date(S.lastExport).toLocaleDateString("ru-RU") : "НИКОГДА";
   const nf = failedItems().length;
   shell(`<div class="setg">
-    <button class="btn" data-tab="tasks">🧳 ЦЕЛИ И ЗАДАЧИ</button>
     <button class="btn" data-tab="fail">❗ ПРОВАЛЕННЫЕ${nf ? " · " + nf : ""}</button>
+    <button class="btn" id="tmr">⏱ ТАЙМЕР</button>
     <button class="btn" data-go="stats">📊 СТАТИСТИКА</button>
     <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
     <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
     <button class="btn" data-go="why">🧠 ПРИЧИНЫ</button>
-    <button class="btn" id="tmr">⏱ ТАЙМЕР</button>
     <button class="btn" id="prim">🎧 ПРАЙМИНГ${S.priming ? " ✅" : ""}</button></div>
     <input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden><input type="file" id="file" accept=".json,application/json" hidden>
     <div class="bk"><button id="ex">💾<small>СОХРАНИТЬ · ${last}</small></button><button id="imp">⬇<small>ВОССТАНОВИТЬ</small></button></div>`);
