@@ -400,12 +400,14 @@ function renderSet() {
     <button class="btn" data-go="why">🧠 ПРИЧИНЫ ПРОПУСКОВ</button>
     <button class="btn" data-go="stats">📊 СТАТИСТИКА И ИСТОРИЯ</button>
     <button class="btn" id="prim">🎧 ПРАЙМИНГ-ФАЙЛ${S.priming ? " ✅" : ""}</button><input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden>
+    <button class="btn" id="tmr">⏱ ТАЙМЕР</button>
     <button class="btn" id="ex">💾 СОХРАНИТЬ КОПИЮ</button>
     <div class="dim">ПОСЛЕДНЯЯ: ${last}. ФАЙЛ СОХРАНИ В «ФАЙЛЫ» (iCLOUD) ИЛИ ОТПРАВЬ В TELEGRAM «ИЗБРАННОЕ».</div>
     <button class="btn" id="imp">⬇ ВОССТАНОВИТЬ ИЗ ФАЙЛА</button><input type="file" id="file" accept=".json,application/json" hidden>
     <div class="dim">ДАННЫЕ ХРАНЯТСЯ НА ТЕЛЕФОНЕ. БЕЗ ИНТЕРНЕТА ВСЁ РАБОТАЕТ.</div>`);
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
   document.getElementById("ex").onclick = exportAll;
+  document.getElementById("tmr").onclick = timerMenu;
   document.getElementById("prim").onclick = () => document.getElementById("pfile").click();
   document.getElementById("pfile").onchange = ev => { const f = ev.target.files[0]; if (f) savePrimingFile(f).then(render); };
   document.getElementById("imp").onclick = () => document.getElementById("file").click();

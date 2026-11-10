@@ -151,7 +151,8 @@ function monthMoney(ym) {
   const start = all && all > a ? all : a;
   const elapsed = Math.max(daysBetween(start, last) + 1, 0);
   const worked = new Set(T("work_days").filter(w => w.day >= start && w.day <= last && ((w.hours || 0) > 0 || (w.earned || 0) > 0)).map(w => w.day)).size;
-  const e = sum(w => w.earned), t = sum(w => w.tips);
+  const shop = T("shop_inc").filter(r => r.day >= a && r.day < b).reduce((s, r) => s + (r.amount || 0), 0);
+  const e = sum(w => w.earned), t = sum(w => w.tips) + shop;
   return {n: ws.length, h: sum(w => w.hours), e, t, spend, net: e + t - spend, chill: Math.max(elapsed - worked, 0)};
 }
 function reportText(ym) {

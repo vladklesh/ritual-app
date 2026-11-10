@@ -65,10 +65,11 @@ function historyRows() {
   const trainDays = {}; T("set_logs").forEach(r => { (trainDays[r.day.slice(0, 4)] = trainDays[r.day.slice(0, 4)] || new Set()).add(r.day); });
   for (let y = y1; y >= y0; y--) {
     const yy = String(y), ws = T("work_days").filter(w => w.day.startsWith(yy) && (w.hours != null || w.earned != null));
-    const e = ws.reduce((s, w) => s + (w.earned || 0), 0), t = ws.reduce((s, w) => s + (w.tips || 0), 0), h = ws.reduce((s, w) => s + (w.hours || 0), 0);
+    const e = ws.reduce((s, w) => s + (w.earned || 0), 0), t0 = ws.reduce((s, w) => s + (w.tips || 0), 0), h = ws.reduce((s, w) => s + (w.hours || 0), 0);
+    const shop = T("shop_inc").filter(r => r.day.startsWith(yy)).reduce((s, r) => s + (r.amount || 0), 0);
     const sp = T("spend_log").filter(r => r.day.startsWith(yy)).reduce((s, r) => s + (r.amount || 0), 0);
     const hl = T("habit_logs").filter(r => r.day.startsWith(yy));
-    out.push({yy, n: ws.length, h, e, t, sp, net: e + t - sp, train: trainDays[yy] ? trainDays[yy].size : 0, yes: hl.filter(r => r.status === "yes").length, no: hl.filter(r => r.status === "no").length});
+    out.push({yy, n: ws.length, h, e, t: t0 + shop, sp, net: e + t0 + shop - sp, train: trainDays[yy] ? trainDays[yy].size : 0, yes: hl.filter(r => r.status === "yes").length, no: hl.filter(r => r.status === "no").length});
   }
   return out;
 }
@@ -172,3 +173,15 @@ async function playPriming() {
   primingEl = new Audio(URL.createObjectURL(new Blob([o.buf], {type: o.type})));
   primingEl.play().catch(() => toast("НЕ УДАЛОСЬ ВКЛЮЧИТЬ ЗВУК"));
 }
+
+// ---------------------------------------------------------------- ⏱ свободный таймер
+function freeTimer(sec) {
+  const end = Date.now() + sec * 1000;
+  const w = sheetOf(b => `<div class="stt">⏱</div><div class="cd" id="ftc">${fmt(sec)}</div><div class="acts">${b("✕", () => { clearInterval(iv); w.close(); })}</div>`);
+  const el = w.querySelector("#ftc");
+  const iv = setInterval(() => {
+    const left = (end - Date.now()) / 1000;
+    if (left <= 0) { clearInterval(iv); beep(3); el.textContent = "⏰ ВРЕМЯ ВЫШЛО"; } else el.textContent = fmt(left);
+  }, 250);
+}
+function timerMenu() { choose("ВРЕМЯ?", [[ "30 с", 30], ["45 с", 45], ["1 мин", 60], ["90 с", 90], ["2 мин", 120], ["3 мин", 180]].map(x => [x[0], () => { closeTop(); freeTimer(x[1]); }])); }
