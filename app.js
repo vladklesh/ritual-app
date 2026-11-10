@@ -12,7 +12,22 @@ function load() {
   try { const o = JSON.parse(localStorage.getItem("ritual.v1") || "null"); if (o && o.runs) runs = o.runs; } catch (e) {}
   return {db: {}, runs, run: null, lastExport: null, timers: {}, last: null, seeded: false};
 }
-function save() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) {} }
+let saveT = null;
+function idbOpen() {
+  return new Promise((res, rej) => { const r = indexedDB.open("ritual", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbPut(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+function flushSave() {
+  clearTimeout(saveT); saveT = null;
+  try { if (typeof indexedDB !== "undefined") idbPut("state", JSON.stringify(S)).catch(() => {}); } catch (e) {}
+}
+function save() {                                // быстрая копия в localStorage (если влезает) + полная в IndexedDB
+  S.savedAt = Date.now();
+  try { const s = JSON.stringify(S); if (s.length < 1200000) localStorage.setItem(LS, s); else localStorage.removeItem(LS); } catch (e) {}
+  clearTimeout(saveT); saveT = setTimeout(flushSave, 250);
+}
+window.addEventListener && window.addEventListener("pagehide", () => { if (saveT) flushSave(); });
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 const T = n => (S.db[n] = S.db[n] || []);
 
@@ -56,6 +71,7 @@ async function lock(on) {
   } catch (e) {}
 }
 document.addEventListener("visibilitychange", () => {
+  if (document.hidden && saveT) flushSave();
   if (!document.hidden && S.run && !S.run.pausedAt) lock(true);
   tickAll();
 });
@@ -247,7 +263,9 @@ function finishRun(full) {
 function renderRun() {
   $app.innerHTML = `<button class="x" id="x">✕</button>
     <div class="big clock" id="clk">0:00</div><div class="list" id="lst"></div>
+    <button class="aud" id="aud" hidden>▶ 🎧</button>
     <div class="foot"><button class="ic" id="pv">⏮</button><div class="big cnt" id="cn">1/1</div><button class="ic" id="nx">⏭</button></div>`;
+  document.getElementById("aud").onclick = playPriming;
   document.getElementById("pv").onclick = prev;
   document.getElementById("nx").onclick = next;
   document.getElementById("clk").onclick = togglePause;
@@ -261,6 +279,7 @@ function paintRun(p) {
   clk.textContent = fmt(p.c[idx] + st.s - p.el);
   clk.classList.toggle("paused", !!r.pausedAt);
   document.getElementById("cn").textContent = (idx + 1) + "/" + r.steps.length;
+  const au = document.getElementById("aud"); if (au) au.hidden = !(S.priming && /прайминг/i.test(st.name || st.n));
   document.getElementById("lst").innerHTML = r.steps.slice(idx).map((s, k) =>
     `<div class="row${k === 0 ? " cur" : ""}">${idx + k + 1}. ${esc(s.n)}: ${fmt(s.s)}${s.note ? " • " + esc(s.note) : ""}</div>`).join("");
 }
@@ -288,6 +307,7 @@ function render() {
   if (screen === "tday") return renderTDay();
   if (screen === "edit") return renderEdit();
   if (screen === "why") return renderWhy();
+  if (screen === "stats") return renderStats();
   if (!S.seeded && !habits().length) return renderEmpty();
   if (tab === "day") renderDay();
   else if (tab === "plan") renderPlan();
@@ -302,6 +322,7 @@ function render() {
 function tickAll() {
   if (typeof pomoTick === "function") pomoTick();
   if (typeof workTick === "function") workTick();
+  if (typeof evTick === "function") evTick();
   if (screen === "run") return tickRun();
   if (screen === "train") return tickTrain();
   const cd = document.getElementById("cd");
@@ -319,7 +340,7 @@ function renderDay() {
   let body;
   cdItem = null;
   const doneN = items.filter(i => i.status).length;
-  const head = `<div class="dim">${today().slice(8)}.${today().slice(5, 7)} · ${doneN}/${items.length}</div>`;
+  const head = `<div class="dim">${today().slice(8)}.${today().slice(5, 7)} · ${doneN}/${items.length}</div>` + (hmNow() >= "21:00" && typeof eveningSummary === "function" ? `<div class="dim" style="white-space:pre-line">${esc(eveningSummary())}</div>` : "");
   if (!first) body = `${head}<div class="item">ВСЁ ВЫПОЛНЕНО ✅</div>`;
   else if (first.at > hmNow()) body = `${head}<div class="item">⏭️ ${first.at}</div>`;
   else {
@@ -329,7 +350,7 @@ function renderDay() {
     const winput = first.typ === "w" ? `<div class="acts"><input id="wkg" inputmode="decimal" placeholder="КГ" style="font-size:28px;text-align:center"><button id="wok">✅</button></div>` : "";
     const mornPending = pend.some(i => i.kind === "morning" && i.name !== N_START);
     body = `${head}<div class="item">▶ ${esc(itemLabel(first))}${mins}</div>
-      ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${winput}<div class="acts">${btns}</div>
+      ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${S.priming && /прайминг/i.test(first.name) ? '<button class="btn" id="aud2">▶ 🎧 ПРАЙМИНГ</button>' : ""}${winput}<div class="acts">${btns}</div>
       ${mornPending && first.kind === "morning" ? '<button class="btn go" id="run" style="font-size:26px;padding:18px">▶ УТРО</button>' : ""}`;
   }
   shell(body);
@@ -340,6 +361,7 @@ function renderDay() {
   });
   const wi = document.getElementById("wkg");
   if (wi) document.getElementById("wok").onclick = () => addWeight(first, wi.value);
+  const a2 = document.getElementById("aud2"); if (a2) a2.onclick = playPriming;
   const run = document.getElementById("run");
   if (run) run.onclick = () => { if (S.run) { screen = "run"; render(); } else startRun(); };
   if (cdItem) { const k = cdItem.id + ":" + today(); if (!S.timers[k]) { S.timers[k] = Date.now(); save(); } paintCountdown(document.getElementById("cd")); }
@@ -376,12 +398,16 @@ function renderSet() {
     <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
     <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
     <button class="btn" data-go="why">🧠 ПРИЧИНЫ ПРОПУСКОВ</button>
+    <button class="btn" data-go="stats">📊 СТАТИСТИКА И ИСТОРИЯ</button>
+    <button class="btn" id="prim">🎧 ПРАЙМИНГ-ФАЙЛ${S.priming ? " ✅" : ""}</button><input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden>
     <button class="btn" id="ex">💾 СОХРАНИТЬ КОПИЮ</button>
     <div class="dim">ПОСЛЕДНЯЯ: ${last}. ФАЙЛ СОХРАНИ В «ФАЙЛЫ» (iCLOUD) ИЛИ ОТПРАВЬ В TELEGRAM «ИЗБРАННОЕ».</div>
     <button class="btn" id="imp">⬇ ВОССТАНОВИТЬ ИЗ ФАЙЛА</button><input type="file" id="file" accept=".json,application/json" hidden>
     <div class="dim">ДАННЫЕ ХРАНЯТСЯ НА ТЕЛЕФОНЕ. БЕЗ ИНТЕРНЕТА ВСЁ РАБОТАЕТ.</div>`);
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
   document.getElementById("ex").onclick = exportAll;
+  document.getElementById("prim").onclick = () => document.getElementById("pfile").click();
+  document.getElementById("pfile").onchange = ev => { const f = ev.target.files[0]; if (f) savePrimingFile(f).then(render); };
   document.getElementById("imp").onclick = () => document.getElementById("file").click();
   document.getElementById("file").onchange = importSeed;
 }

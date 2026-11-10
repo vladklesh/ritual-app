@@ -1,6 +1,7 @@
 "use strict";
 // ================================================================== 🧳 ЦЕЛИ · СФЕРЫ · ПРОЕКТЫ · ЗАДАЧИ
 let tv = {v: "main"};
+const TEXT = {};                                  // экраны из других файлов (итоги месяца)
 const tgo = (v, o) => { tv = Object.assign({v}, o || {}); renderTasks(); };
 const sphIcon = g => (SPHERES.find(s => s.k === g.sphere) || {ic: "▫️"}).ic;
 const goalsTop = () => T("goals").filter(g => g.grp === "top6").sort((a, b) => (a.pos || 0) - (b.pos || 0) || a.id - b.id);
@@ -9,13 +10,13 @@ const PER = 6;
 
 function renderTasks() {
   _acts = [];
-  ({main: tMain, goals: tGoals, glist: tGlist, gedit: tGedit, gone: tGone, spheres: tSpheres, sph: tSph, projects: tProjects, tasks: tTasks}[tv.v] || tMain)();
+  ({...TEXT, main: tMain, goals: tGoals, glist: tGlist, gedit: tGedit, gone: tGone, spheres: tSpheres, sph: tSph, projects: tProjects, tasks: tTasks}[tv.v] || tMain)();
 }
 function tMain() {
   const done = goalsAll().filter(g => g.done_on).length, open = T("tasks").filter(t => !t.done).length;
   W(`<div class="title">🧳</div>` + B(`🎯 ЦЕЛИ · ТОП-100: ${done}/${goalsAll().length}`, () => tgo("goals")) + B("🧭 СФЕРЫ ЖИЗНИ", () => tgo("spheres")) +
     B("🧳 ПРОЕКТЫ", () => tgo("projects")) + B(`✅ ЗАДАЧИ${open ? " · " + open : ""}`, () => tgo("tasks")) +
-    B("♾️ ПРИВЫЧКИ", () => { screen = "edit"; render(); }));
+    B("🗓 ИТОГИ МЕСЯЦА", reviewStart) + B("📜 ПРОШЛЫЕ ИТОГИ", () => tgo("revs")) + B("♾️ ПРИВЫЧКИ", () => { screen = "edit"; render(); }));
 }
 // ---- цели
 function tGoals() {

@@ -259,7 +259,7 @@ function sheetOf(build) {                        // build(B) → html; кноп�
 }
 function askText(title, ok, o) {                 // поле ввода: ok(text) → true закрыть, false оставить
   o = o || {};
-  const w = sheetOf(b => `<div class="stt">${esc(title)}</div><input class="ai" placeholder="${esc(o.ph || "")}" value="${esc(o.val || "")}">
+  const w = sheetOf(b => `<div class="stt">${esc(title)}</div>${o.ml ? `<textarea class="ai" rows="5" placeholder="${esc(o.ph || "")}">${esc(o.val || "")}</textarea>` : `<input class="ai" placeholder="${esc(o.ph || "")}" value="${esc(o.val || "")}">`}
     <div class="acts">${(o.extra || []).map(x => b(x[0], () => { w.close(); x[1](); })).join("")}${b("✕", () => w.close())}${b("✅", () => go_())}</div>`);
   const inp = w.querySelector(".ai"), go_ = () => { const r = ok(inp.value); if (r !== false) w.close(); };
   try { inp.focus(); } catch (e) {}
