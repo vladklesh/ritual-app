@@ -121,6 +121,7 @@ function answer(it, a) {
     }
     save(); return false;
   }
+  if (a === "y" && ["ВСТАЛ В", "ЗАПИШИ СОН", "ЛЕГ СПАТЬ В"].includes(it.name)) { sleepAsk(it); return false; }
   if (a === "m") {
     setStatus(it.id, "yes");
     T("min_log").push({habit_id: it.id, day});

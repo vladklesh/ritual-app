@@ -239,6 +239,7 @@ function spendSumline(items) {                   // 🍱400+500=900₽
 
 // ================================================================== ИНТЕРФЕЙС
 let _acts = [], wv = {v: "main"};
+const WEXT = {};                                  // экраны из других файлов (долги и т. д.)
 const B = (label, fn, cls) => `<button class="${cls || "btn"}" data-a="${_acts.push(fn) - 1}">${label}</button>`;
 function W(html) {
   shell(html);
@@ -378,7 +379,7 @@ function editStartEnd(w) {
 // ---------------------------------------------------------------- экраны
 function renderWork() {
   _acts = [];
-  ({main: wMain, shifts: wShifts, shift: wShift, places: wPlaces, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu}[wv.v] || wMain)();
+  ({main: wMain, shifts: wShifts, shift: wShift, places: wPlaces, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu, ...WEXT}[wv.v] || wMain)();
 }
 function wMain() {
   const ym = today().slice(0, 7), unp = unpaidRows(), pend = pendingTransfers(), fill = workPending();
@@ -388,6 +389,7 @@ function wMain() {
   h += `<div class="r2">${B("➕ СМЕНА", addShiftOnDate)}${B("💰 ЗП", payStart)}</div>`;
   h += `<div class="r2">${B("💸 ТРАТЫ", () => wgo("spend"))}${B("🗓 ИТОГИ", () => wgo("rmenu"))}</div>`;
   h += `<div class="r2">${B("📋 СМЕНЫ", () => wgo("shifts"))}${B("📍 МЕСТА", () => wgo("places"))}</div>`;
+  h += B("🫴 ДОЛГИ И ВКЛАДЫ", () => wgo("debts"));
   if (fill.length) h += B(`✍ ДОЗАПОЛНИТЬ: ${fill.length}`, () => shiftChain(fill[0].id));
   if (pend.length) {
     h += `<div class="sec">ПЕРЕВЕДИ</div>`;
