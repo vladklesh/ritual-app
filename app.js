@@ -89,11 +89,14 @@ function dayItems(day) {
     .sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.id - b.id).forEach(h => items.push(mk(h, "00:00")));
   by("daily").sort(sortRemind).forEach(h => items.push(mk(h, h.remind || "00:00")));
   by("evening").sort(sortRemind).forEach(h => items.push(mk(h, h.remind || "00:00")));
+  T("weight_flags").filter(f => f.day === day).forEach(f => items.push({typ: "w", id: f.id, kind: "wflag", name: f.exercise,
+    at: "19:00", minutes: 0, status: f.status || null}));
   by("quit").sort((a, b) => a.id - b.id).forEach(h => items.push(Object.assign(mk(h, "00:00"), {days: quitDays(h)})));
   by("night").sort((a, b) => a.id - b.id).forEach(h => items.push(mk(h, "00:00")));
   return items;
 }
 function itemLabel(it) {
+  if (it.typ === "w") return "ДОБАВИТЬ ВЕС: " + it.name.toUpperCase() + " (СЕЙЧАС " + (getKg(it.name, null) ?? 0) + " КГ)\nНАПИШИ, СКОЛЬКО КГ ДОБАВИЛ";
   if (it.kind === "quit") {
     const kc = isAbstain(it.name) ? T("abstain_log").filter(a => a.habit_id === it.id && a.kind === "sex").length : 0;
     return it.name + " · " + it.days + " ДН." + (kc ? " · 💋" + kc : "");
@@ -108,6 +111,7 @@ function itemButtons(it) {
 }
 function answer(it, a) {
   const day = today();
+  if (it.typ === "w") { const f = T("weight_flags").find(x => x.id === it.id); if (f) f.status = "no"; save(); return false; }
   if (it.kind === "quit") {
     if (a === "y") setStatus(it.id, "yes");
     else {                                    // срыв: счётчик в ноль, рекорд сохраняется
@@ -156,7 +160,7 @@ function askReason(it) {
 // ================================================================== УТРО-РИТУАЛ (по часам)
 function morningSteps() {
   return dayItems().filter(i => i.kind === "morning" && i.name !== N_START && !i.status)
-    .map(i => ({id: i.id, n: i.name.replace(/^Подъём: /, "").replace(/\s*\n\s*/g, " ").slice(0, 40),
+    .map(i => ({id: i.id, name: i.name, n: i.name.replace(/^Подъём: /, "").replace(/\s*\n\s*/g, " ").slice(0, 40),
       s: (i.minutes || (i.name === TRAINING ? 20 : 1)) * 60, note: ""}));
 }
 function cum(steps) { let t = 0; return steps.map(s => (t += s.s, t - s.s)); }
@@ -191,6 +195,11 @@ function tickRun() {
   const r = S.run;
   if (!r || screen !== "run") return;
   const p = posOf(r);
+  if (p.idx < r.steps.length && r.steps[p.idx].name === TRAINING && !r.pausedAt && !S.train) {
+    markUpTo(r, p.idx, "auto");                // всё до тренировки пройдено; ритуал ждёт
+    r.pausedAt = Date.now(); r.waitTrain = p.idx; save();
+    startTraining(false, "run"); return;
+  }
   if (p.idx > r.seen) {
     markUpTo(r, p.idx, "auto"); save();
     if (p.idx >= r.steps.length) { finishRun(true); return; }
@@ -263,6 +272,9 @@ function shell(inner) {
 function render() {
   clearInterval(timer);
   if (screen === "run" && S.run) { renderRun(); timer = setInterval(tickAll, 250); return; }
+  if (screen === "train" && S.train) { renderTrain(); timer = setInterval(tickTrain, 250); return; }
+  if (screen === "tstats") return renderTStats();
+  if (screen === "tday") return renderTDay();
   if (screen === "edit") return renderEdit();
   if (screen === "why") return renderWhy();
   if (!S.seeded && !habits().length) return renderEmpty();
@@ -274,6 +286,7 @@ function render() {
 }
 function tickAll() {
   if (screen === "run") return tickRun();
+  if (screen === "train") return tickTrain();
   const cd = document.getElementById("cd");
   if (cd) paintCountdown(cd);
 }
@@ -295,17 +308,21 @@ function renderDay() {
   else {
     const mins = first.minutes && first.name !== TRAINING ? " · " + first.minutes + " МИН" : "";
     cdItem = first.minutes && first.name !== TRAINING ? first : null;
-    const btns = itemButtons(first).map(b => `<button data-a="${b[0]}">${b[1]}</button>`).join("");
+    const btns = (first.typ === "w" ? [["n", NO]] : itemButtons(first)).map(b => `<button data-a="${b[0]}">${b[1]}</button>`).join("");
+    const winput = first.typ === "w" ? `<div class="acts"><input id="wkg" inputmode="decimal" placeholder="КГ" style="font-size:28px;text-align:center"><button id="wok">✅</button></div>` : "";
     const mornPending = pend.some(i => i.kind === "morning" && i.name !== N_START);
     body = `${head}<div class="item">▶ ${esc(itemLabel(first))}${mins}</div>
-      ${cdItem ? '<div class="cd" id="cd"></div>' : ""}<div class="acts">${btns}</div>
+      ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${winput}<div class="acts">${btns}</div>
       ${mornPending && first.kind === "morning" ? '<button class="btn go" id="run" style="font-size:26px;padding:18px">▶ УТРО</button>' : ""}`;
   }
   shell(body);
   document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
+    if (first.name === TRAINING && first.typ !== "w" && b.dataset.a !== "n") { startTraining(b.dataset.a === "m"); return; }
     const ask = answer(first, b.dataset.a);
     if (ask) askReason(first); else render();
   });
+  const wi = document.getElementById("wkg");
+  if (wi) document.getElementById("wok").onclick = () => addWeight(first, wi.value);
   const run = document.getElementById("run");
   if (run) run.onclick = () => { if (S.run) { screen = "run"; render(); } else startRun(); };
   if (cdItem) { const k = cdItem.id + ":" + today(); if (!S.timers[k]) { S.timers[k] = Date.now(); save(); } paintCountdown(document.getElementById("cd")); }
@@ -342,12 +359,15 @@ function renderSet() {
   shell(`<div class="title">⚙</div>
     ${due ? `<div class="warn">⬆ ПОРА ВЫГРУЗИТЬ ДАННЫЕ В БОТ</div>` : ""}
     <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
+    <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
     <button class="btn" data-go="why">🧠 ПРИЧИНЫ ПРОПУСКОВ</button>
+    <button class="btn" id="ics">🔔 УВЕДОМЛЕНИЯ В КАЛЕНДАРЬ</button>
     <button class="btn" id="ex">⬆ ВЫГРУЗИТЬ${unsynced ? " · " + unsynced : ""}</button>
     <button class="btn" id="imp">⬇ ЗАГРУЗИТЬ ИЗ БОТА</button><input type="file" id="file" accept=".json,application/json" hidden>
     <div class="dim">ДАННЫЕ ХРАНЯТСЯ НА ТЕЛЕФОНЕ. БЕЗ ИНТЕРНЕТА ВСЁ РАБОТАЕТ.</div>`);
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
   document.getElementById("ex").onclick = exportAll;
+  document.getElementById("ics").onclick = exportIcs;
   document.getElementById("imp").onclick = () => document.getElementById("file").click();
   document.getElementById("file").onchange = importSeed;
 }
@@ -447,6 +467,36 @@ async function exportAll() {
   S.runs.forEach(r => r.synced = true); S.lastExport = Date.now(); save(); render();
 }
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-if (S.run) screen = "run";
-render();
+
+// ================================================================== УВЕДОМЛЕНИЯ (календарь iPhone, работает без интернета)
+function icsEscape(t) { return String(t).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, " "); }
+function buildIcs(days) {
+  const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Ritual//RU", "CALSCALE:GREGORIAN"];
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const add = (day, hm, title, mins) => {
+    const d = day.replace(/-/g, ""), t0 = hm.replace(":", "") + "00";
+    const e = new Date(day + "T" + hm + ":00"); e.setMinutes(e.getMinutes() + (mins || 5));
+    const de = isoDay(e).replace(/-/g, "") + "T" + pad(e.getHours()) + pad(e.getMinutes()) + "00";
+    L.push("BEGIN:VEVENT", "UID:ritual-" + d + t0 + "-" + Math.abs([...title].reduce((a, c) => a * 31 + c.charCodeAt(0) | 0, 7)) + "@ritual",
+      "DTSTAMP:" + stamp, "DTSTART:" + d + "T" + t0, "DTEND:" + de, "SUMMARY:" + icsEscape(title),
+      "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + icsEscape(title), "TRIGGER:PT0M", "END:VALARM", "END:VEVENT");
+  };
+  for (let k = 0; k < days; k++) {
+    const d = new Date(); d.setDate(d.getDate() + k); const day = isoDay(d);
+    dayItems(day).filter(i => (i.kind === "daily" || i.kind === "evening") && i.at && i.at !== "00:00" && !(k === 0 && i.status))
+      .forEach(i => add(day, i.at, i.name, 5));
+    if (typeof extraIcs === "function") extraIcs(day, add);   // смены, будильники и т. д. (следующие этапы)
+  }
+  L.push("END:VCALENDAR");
+  return L.join("\r\n");
+}
+async function exportIcs() {
+  const txt = buildIcs(7), name = "ritual_alarms.ics";
+  try {
+    const file = new File([txt], name, {type: "text/calendar"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) { await navigator.share({files: [file], title: name}); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([txt], {type: "text/calendar"}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
