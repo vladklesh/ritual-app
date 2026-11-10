@@ -380,9 +380,8 @@ function failedItems() {
 function renderFail() {
   const f = failedItems();
   const rows = f.map(h => `<button class="btn" data-h="${h.id}">${YES} ${esc(h.name.slice(0, 40))}</button>`).join("");
-  shell(f.length ? `<div class="title">ПРОВАЛЕННЫЕ СЕГОДНЯ: ${f.length}</div><div class="dim">НАЖМИ ${YES}, ЕСЛИ СДЕЛАЛ</div>${rows}`
-    : `<div class="item">ПРОВАЛОВ НЕТ ✅</div>`) ;
-  document.getElementById("body").insertAdjacentHTML("beforeend", `<button class="btn" id="fback">⬅</button>`);
+  shell((f.length ? `<div class="title">ПРОВАЛЕННЫЕ СЕГОДНЯ: ${f.length}</div><div class="dim">НАЖМИ ${YES}, ЕСЛИ СДЕЛАЛ</div>${rows}`
+    : `<div class="item">ПРОВАЛОВ НЕТ ✅</div>`) + `<button class="btn" id="fback">⬅</button>`);
   document.getElementById("fback").onclick = () => { tab = "set"; screen = "set"; render(); };
   document.querySelectorAll("[data-h]").forEach(b => b.onclick = () => {
     const h = habits().find(x => x.id === +b.dataset.h), day = today();
