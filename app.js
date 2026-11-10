@@ -285,7 +285,7 @@ function paintRun(p) {
 }
 
 // ================================================================== ЭКРАНЫ
-const TABS = [["day", "DAY"], ["plan", "📅"], ["pomo", "🍅"], ["fail", "❗"], ["tasks", "🧳"], ["work", "🤵‍♂️"], ["set", "⚙"]];
+const TABS = [["day", "DAY"], ["plan", "📅"], ["pomo", "🍅"], ["work", "🤵‍♂️"], ["set", "⚙"]];
 function lastSun2130() {
   const n = new Date(), d = new Date(n); d.setHours(21, 30, 0, 0); d.setDate(d.getDate() - d.getDay());
   if (d > n) d.setDate(d.getDate() - 7);
@@ -295,7 +295,7 @@ function exportDue() { if (!S.since) { S.since = Date.now(); save(); } return (S
 function shell(inner) {
   const ban = exportDue() ? `<div class="warn" id="exw">⬆ ВС 21:30 · СОХРАНИ КОПИЮ ДАННЫХ (НАЖМИ)</div>` : "";
   $app.innerHTML = `<div class="scroll" id="body">${ban}${inner}</div><div class="tabs">` +
-    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
+    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] || (t[0] === "set" && ["fail", "tasks"].includes(tab)) ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
   $app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; screen = tab; render(); });
   const ew = document.getElementById("exw"); if (ew) ew.onclick = exportAll;
 }
@@ -381,7 +381,9 @@ function renderFail() {
   const f = failedItems();
   const rows = f.map(h => `<button class="btn" data-h="${h.id}">${YES} ${esc(h.name.slice(0, 40))}</button>`).join("");
   shell(f.length ? `<div class="title">ПРОВАЛЕННЫЕ СЕГОДНЯ: ${f.length}</div><div class="dim">НАЖМИ ${YES}, ЕСЛИ СДЕЛАЛ</div>${rows}`
-    : `<div class="item">ПРОВАЛОВ НЕТ ✅</div>`);
+    : `<div class="item">ПРОВАЛОВ НЕТ ✅</div>`) ;
+  document.getElementById("body").insertAdjacentHTML("beforeend", `<button class="btn" id="fback">⬅</button>`);
+  document.getElementById("fback").onclick = () => { tab = "set"; screen = "set"; render(); };
   document.querySelectorAll("[data-h]").forEach(b => b.onclick = () => {
     const h = habits().find(x => x.id === +b.dataset.h), day = today();
     if (h.kind === "quit") {                  // отказ нажат ❌ по ошибке: вернуть счётчик
@@ -394,18 +396,20 @@ function renderFail() {
 }
 function renderSet() {
   const last = S.lastExport ? new Date(S.lastExport).toLocaleDateString("ru-RU") : "НИКОГДА";
-  shell(`<div class="title">⚙</div>
-    <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
+  const nf = failedItems().length;
+  shell(`<div class="setg">
+    <button class="btn" data-tab="tasks">🧳 ЦЕЛИ И ЗАДАЧИ</button>
+    <button class="btn" data-tab="fail">❗ ПРОВАЛЕННЫЕ${nf ? " · " + nf : ""}</button>
+    <button class="btn" data-go="stats">📊 СТАТИСТИКА</button>
     <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
-    <button class="btn" data-go="why">🧠 ПРИЧИНЫ ПРОПУСКОВ</button>
-    <button class="btn" data-go="stats">📊 СТАТИСТИКА И ИСТОРИЯ</button>
-    <button class="btn" id="prim">🎧 ПРАЙМИНГ-ФАЙЛ${S.priming ? " ✅" : ""}</button><input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden>
+    <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
+    <button class="btn" data-go="why">🧠 ПРИЧИНЫ</button>
     <button class="btn" id="tmr">⏱ ТАЙМЕР</button>
-    <button class="btn" id="ex">💾 СОХРАНИТЬ КОПИЮ</button>
-    <div class="dim">ПОСЛЕДНЯЯ: ${last}. ФАЙЛ СОХРАНИ В «ФАЙЛЫ» (iCLOUD) ИЛИ ОТПРАВЬ В TELEGRAM «ИЗБРАННОЕ».</div>
-    <button class="btn" id="imp">⬇ ВОССТАНОВИТЬ ИЗ ФАЙЛА</button><input type="file" id="file" accept=".json,application/json" hidden>
-    <div class="dim">ДАННЫЕ ХРАНЯТСЯ НА ТЕЛЕФОНЕ. БЕЗ ИНТЕРНЕТА ВСЁ РАБОТАЕТ.</div>`);
+    <button class="btn" id="prim">🎧 ПРАЙМИНГ${S.priming ? " ✅" : ""}</button></div>
+    <input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden><input type="file" id="file" accept=".json,application/json" hidden>
+    <div class="bk"><button id="ex">💾<small>СОХРАНИТЬ · ${last}</small></button><button id="imp">⬇<small>ВОССТАНОВИТЬ</small></button></div>`);
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = screen = b.dataset.tab; if (tab === "tasks") tv = {v: "main"}; render(); });
   document.getElementById("ex").onclick = exportAll;
   document.getElementById("tmr").onclick = timerMenu;
   document.getElementById("prim").onclick = () => document.getElementById("pfile").click();

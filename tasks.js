@@ -4,8 +4,21 @@ let tv = {v: "main"};
 const TEXT = {};                                  // экраны из других файлов (итоги месяца)
 const tgo = (v, o) => { tv = Object.assign({v}, o || {}); renderTasks(); };
 const sphIcon = g => (SPHERES.find(s => s.k === g.sphere) || {ic: "▫️"}).ic;
-const goalsTop = () => T("goals").filter(g => g.grp === "top6").sort((a, b) => (a.pos || 0) - (b.pos || 0) || a.id - b.id);
-const goalsAll = () => T("goals").filter(g => g.grp === "top100").sort((a, b) => (a.pos || 0) - (b.pos || 0) || a.id - b.id);
+// «ДО 31.12.2033 · текст», «ПЕРСПЕКТИВА 2030+ · текст» → {t: текст, d: срок, k: ключ сортировки}
+function goalSplit(g) {
+  const s = String(g.text || ""), m = s.match(/^\s*((?:ДО|К)\s+(\d{1,2})\.(\d{1,2})\.(\d{4})|ПЕРСПЕКТИВА\s+(\d{4})\+?)\s*[·•\-–—:]\s*(.+)$/is);
+  if (!m) return {t: s, d: "", k: "9999"};
+  const k = m[4] ? `${m[4]}-${pad(+m[3])}-${pad(+m[2])}` : `${m[5]}-12-31~`;
+  return {t: m[6].trim(), d: m[1].trim().toUpperCase(), k};
+}
+const gsort = (a, b) => goalSplit(a).k.localeCompare(goalSplit(b).k) || (a.pos || 0) - (b.pos || 0) || a.id - b.id;
+const goalsTop = () => T("goals").filter(g => g.grp === "top6").sort(gsort);
+const goalsAll = () => T("goals").filter(g => g.grp === "top100").sort(gsort);
+function goalCard(g, pre, act) {
+  const s = goalSplit(g);
+  return `<button class="gl" data-a="${_acts.push(act) - 1}">${pre}${g.done_on ? "✅" : "⬜"} ${sphIcon(g)} ${esc(s.t)}${s.d ? `<div class="gd">${esc(s.d)}</div>` : ""}${g.detail ? `<div class="gx">↳ ${esc(g.detail.slice(0, 260))}</div>` : ""}</button>`;
+}
+const gtog = g => () => { g.done_on = g.done_on ? null : today(); save(); renderTasks(); };
 const PER = 6;
 
 function renderTasks() {
@@ -14,17 +27,14 @@ function renderTasks() {
 }
 function tMain() {
   const done = goalsAll().filter(g => g.done_on).length, open = T("tasks").filter(t => !t.done).length;
-  W(`<div class="title">🧳</div>` + B(`🎯 ЦЕЛИ · ТОП-100: ${done}/${goalsAll().length}`, () => tgo("goals")) + B("🧭 СФЕРЫ ЖИЗНИ", () => tgo("spheres")) +
+  W(`<div class="title">🧳</div>` + B("⬅", () => { tab = screen = "set"; render(); }) + B(`🎯 ЦЕЛИ · ТОП-100: ${done}/${goalsAll().length}`, () => tgo("goals")) + B("🧭 СФЕРЫ ЖИЗНИ", () => tgo("spheres")) +
     B("🧳 ПРОЕКТЫ", () => tgo("projects")) + B(`✅ ЗАДАЧИ${open ? " · " + open : ""}`, () => tgo("tasks")) +
     B("🗓 ИТОГИ МЕСЯЦА", reviewStart) + B("📜 ПРОШЛЫЕ ИТОГИ", () => tgo("revs")) + B("♾️ ПРИВЫЧКИ", () => { screen = "edit"; render(); }));
 }
 // ---- цели
 function tGoals() {
   const top = goalsTop(), done = goalsAll().filter(g => g.done_on).length;
-  const L = ["🎯 ГЛАВНЫЕ ЦЕЛИ ПО ГОДАМ (НАЖМИ, ЧТОБЫ ОТМЕТИТЬ)"];
-  top.forEach(g => L.push(`${g.done_on ? "✅" : "⬜"} ${sphIcon(g)} ${g.text}${g.detail ? "\n   ↳ " + g.detail.slice(0, 200) : ""}`));
-  L.push(`\nТОП-100: ${done}/${goalsAll().length} ВЫПОЛНЕНО`);
-  W(`<div class="pre">${esc(L.join("\n"))}</div>` + top.map(g => B(`${g.done_on ? "✅" : "⬜"} ${sphIcon(g)} ${esc(g.text.slice(0, 42))}`, () => { g.done_on = g.done_on ? null : today(); save(); renderTasks(); })).join("") +
+  W(`<div class="title">🎯 ГЛАВНЫЕ ЦЕЛИ</div><div class="dim">НАЖМИ, ЧТОБЫ ОТМЕТИТЬ · ТОП-100: ${done}/${goalsAll().length}</div>` + top.map(g => goalCard(g, "", gtog(g))).join("") +
     `<div class="r2">${B("📋 ВСЕ ЦЕЛИ", () => tgo("glist", {p: 0}))}${B("➕ ЦЕЛЬ", () => askText("НАПИШИ НОВУЮ ЦЕЛЬ", t => {
       if (!t.trim()) return false; const pos = goalsAll().reduce((m, g) => Math.max(m, g.pos || 0), 0) + 1;
       T("goals").push({id: nextId("goals"), grp: "top100", text: t.trim().slice(0, 300), detail: null, pos, done_on: null, sphere: null}); save(); renderTasks(); return true; }))}
@@ -32,14 +42,12 @@ function tGoals() {
 }
 function tGlist() {
   const all = goalsAll(), pages = Math.max(Math.ceil(all.length / PER), 1), p = Math.min(Math.max(tv.p, 0), pages - 1), chunk = all.slice(p * PER, (p + 1) * PER);
-  const L = [`📋 ЦЕЛИ · СТР. ${p + 1}/${pages}`];
-  chunk.forEach((g, i) => L.push(`\n${p * PER + i + 1}. ${g.done_on ? "✅" : "⬜"} ${sphIcon(g)} ${g.text}${g.detail ? "\n" + g.detail.slice(0, 260) : ""}`));
-  W(`<div class="pre">${esc(L.join("\n"))}</div><div class="chk">` + chunk.map((g, i) => B(`${g.done_on ? "✅" : "⬜"} ${p * PER + i + 1}`, () => { g.done_on = g.done_on ? null : today(); save(); renderTasks(); }, "btn sm")).join("") + `</div>
+  W(`<div class="title">📋 ЦЕЛИ · ${p + 1}/${pages}</div>` + chunk.map((g, i) => goalCard(g, `${p * PER + i + 1}. `, gtog(g))).join("") + `
     <div class="r2">${p > 0 ? B("◀", () => tgo("glist", {p: p - 1})) : ""}${B("✏️", () => tgo("gedit", {top: false, p}))}${p < pages - 1 ? B("▶", () => tgo("glist", {p: p + 1})) : ""}</div>` + B("⬅", () => tgo("goals")));
 }
 function tGedit() {
   const list = tv.top ? goalsTop() : goalsAll().slice(tv.p * PER, (tv.p + 1) * PER);
-  W(`<div class="title">✏️ КАКУЮ ЦЕЛЬ ПРАВИМ?</div>` + list.map(g => B(`${sphIcon(g)} ${esc(g.text.slice(0, 45))}`, () => tgo("gone", {id: g.id, top: tv.top, p: tv.p}))).join("") + B("⬅", () => tv.top ? tgo("goals") : tgo("glist", {p: tv.p})));
+  W(`<div class="title">✏️ КАКУЮ ЦЕЛЬ ПРАВИМ?</div>` + list.map(g => B(`${sphIcon(g)} ${esc(goalSplit(g).t.slice(0, 45))}`, () => tgo("gone", {id: g.id, top: tv.top, p: tv.p}))).join("") + B("⬅", () => tv.top ? tgo("goals") : tgo("glist", {p: tv.p})));
 }
 function tGone() {
   const g = T("goals").find(x => x.id === tv.id); if (!g) return tgo("goals");
@@ -56,7 +64,7 @@ function tSpheres() {
 }
 function tSph() {
   const s = SPHERES.find(x => x.k === tv.k), inf = SPH_INFO[tv.k], gl = T("goals").filter(g => g.sphere === tv.k).sort((a, b) => (a.pos || 0) - (b.pos || 0));
-  const L = [`${s.ic} ${s.nm}`, inf.intro, "", "ЧТО ВАЖНО УЧЕСТЬ:", ...inf.qs.map(q => "• " + q), "", gl.length ? "ЦЕЛИ:" : "ЦЕЛЕЙ ПОКА НЕТ. ✏️ В 🎯 — НАЗНАЧИТЬ СФЕРУ", ...gl.map(g => `${g.done_on ? "✅" : "⬜"} ${g.text.slice(0, 90)}`)];
+  const L = [`${s.ic} ${s.nm}`, inf.intro, "", "ЧТО ВАЖНО УЧЕСТЬ:", ...inf.qs.map(q => "• " + q), "", gl.length ? "ЦЕЛИ:" : "ЦЕЛЕЙ ПОКА НЕТ. ✏️ В 🎯 — НАЗНАЧИТЬ СФЕРУ", ...gl.sort(gsort).map(g => { const s = goalSplit(g); return `${g.done_on ? "✅" : "⬜"} ${s.t.slice(0, 90)}${s.d ? "\n   " + s.d : ""}`; })];
   W(`<div class="pre">${esc(L.join("\n"))}</div>` + B("⬅", () => tgo("spheres")));
 }
 // ---- проекты
@@ -68,7 +76,7 @@ function tProjects() {
     B("➕", () => askText("НАЗВАНИЕ ПРОЕКТА?", n => {
       if (!n.trim()) return false;
       const add = gid => { T("projects").push({id: nextId("projects"), name: n.trim().slice(0, 40), goal_id: gid || null, active: 1}); save(); renderTasks(); };
-      setTimeout(() => choose("К КАКОЙ ЦЕЛИ ОТНОСИТСЯ?", goalsTop().map(g => [g.text.slice(0, 45), () => { closeTop(); add(g.id); }]).concat([["БЕЗ ЦЕЛИ", () => { closeTop(); add(null); }]])), 30);
+      setTimeout(() => choose("К КАКОЙ ЦЕЛИ ОТНОСИТСЯ?", goalsTop().map(g => [goalSplit(g).t.slice(0, 45), () => { closeTop(); add(g.id); }]).concat([["БЕЗ ЦЕЛИ", () => { closeTop(); add(null); }]])), 30);
       return true; })) + B("⬅", () => tgo("main")));
 }
 // ---- задачи (можно отправить в 📅 план)

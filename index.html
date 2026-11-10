@@ -7,12 +7,12 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ритуал">
-<meta name="theme-color" content="#3574bb">
+<meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Ритуал</title>
 <style>
-:root{--bg:#3574bb;--bar:#28578c;--line:rgba(255,255,255,.85);--txt:#fff;--dim:rgba(255,255,255,.7)}
+:root{--bg:#000;--bar:#1c1c1e;--line:rgba(255,255,255,.85);--txt:#fff;--dim:rgba(255,255,255,.7)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
   font-family:-apple-system,"SF Pro Display","Helvetica Neue",Arial,sans-serif;overflow:hidden;
@@ -37,7 +37,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .title{font-size:26px;font-weight:600;text-align:center;padding:18px 0 10px}
 .btn{display:block;width:100%;padding:16px;margin:8px 0;font-size:20px;font-weight:600;
   background:var(--bar);border-radius:12px;text-align:center}
-.btn.go{font-size:34px;padding:26px;background:#fff;color:var(--bg);font-weight:300}
+.btn.go{font-size:34px;padding:26px;background:#fff;color:#000;font-weight:300}
 .scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
 .card{background:var(--bar);border-radius:12px;padding:10px 12px;margin:8px 0}
 .card.edit{display:grid;grid-template-columns:1fr auto;gap:6px}
@@ -112,19 +112,28 @@ input[type=time],input[type=date]{color-scheme:dark;min-height:42px}
 textarea.ai{width:100%;font:inherit;font-size:17px;color:#fff;background:rgba(255,255,255,.12);border:0;border-radius:8px;padding:9px 10px;-webkit-user-select:text;user-select:text;resize:none}
 .aud{display:block;margin:6px auto;font-size:22px;padding:8px 22px;background:var(--bar);border-radius:12px}
 .tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl td,.tbl th{padding:5px 3px;border-bottom:1px solid rgba(255,255,255,.2);text-align:right}.tbl td:first-child,.tbl th:first-child{text-align:left}
+.sheet>div{background:#111}
+.gl{background:var(--bar);border-radius:12px;padding:9px 11px;margin:6px 0;font-size:17px;line-height:1.3;text-align:left;width:100%;display:block}
+.gl .gd{font-size:13px;color:var(--dim);margin-top:3px}
+.gl .gx{font-size:13px;color:var(--dim);margin-top:4px;white-space:pre-line}
+.setg{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.setg .btn{font-size:16px;padding:12px 6px;margin:0}
+.bk{display:flex;gap:7px;margin-top:10px}
+.bk button{flex:1;background:var(--bar);border-radius:12px;padding:8px 4px;font-size:26px;line-height:1.1}
+.bk small{display:block;font-size:12px;color:var(--dim);margin-top:3px}
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script src="app.js?v=10"></script>
-<script src="training.js?v=10"></script>
-<script src="plan.js?v=10"></script>
-<script src="pomo.js?v=10"></script>
-<script src="work.js?v=10"></script>
-<script src="debts.js?v=10"></script>
-<script src="spheres.js?v=10"></script>
-<script src="tasks.js?v=10"></script>
-<script src="stats.js?v=10"></script>
-<script src="main.js?v=10"></script>
+<script src="app.js?v=11"></script>
+<script src="training.js?v=11"></script>
+<script src="plan.js?v=11"></script>
+<script src="pomo.js?v=11"></script>
+<script src="work.js?v=11"></script>
+<script src="debts.js?v=11"></script>
+<script src="spheres.js?v=11"></script>
+<script src="tasks.js?v=11"></script>
+<script src="stats.js?v=11"></script>
+<script src="main.js?v=11"></script>
 </body>
 </html>
