@@ -293,6 +293,7 @@ function render() {
   else if (tab === "plan") renderPlan();
   else if (tab === "pomo") renderPomo();
   else if (tab === "work") renderWork();
+  else if (tab === "tasks") renderTasks();
   else if (tab === "fail") renderFail();
   else if (tab === "set") renderSet();
   else shell(`<div class="title">СКОРО</div><div class="dim">ЭТОТ РАЗДЕЛ ПЕРЕНОСИТСЯ СЛЕДУЮЩИМ ЭТАПОМ.<br>ПОКА ОН В БОТЕ.</div>`);
