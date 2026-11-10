@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ритуал">
+<meta name="theme-color" content="#3574bb">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Ритуал</title>
+<style>
+:root{--bg:#3574bb;--bar:#28578c;--line:rgba(255,255,255,.85);--txt:#fff;--dim:rgba(255,255,255,.7)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+  font-family:-apple-system,"SF Pro Display","Helvetica Neue",Arial,sans-serif;overflow:hidden;
+  -webkit-user-select:none;user-select:none}
+#app{height:100%;display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 8px)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.big{font-weight:200;line-height:1;text-align:center;letter-spacing:-.02em}
+/* бегущий экран */
+.clock{font-size:min(36vw,170px);padding:6vh 0 3vh;font-variant-numeric:tabular-nums}
+.paused{opacity:.45}
+.list{flex:1;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;padding-bottom:6px}
+.row{padding:14px 10px;text-align:center;font-size:clamp(20px,5.3vw,26px);line-height:1.2;
+  border-bottom:1px solid var(--line)}
+.row.cur{background:var(--bar);font-weight:700;border-radius:8px 8px 0 0}
+.row.done{opacity:.4}
+.foot{display:flex;align-items:center;justify-content:space-between;padding:8px 6px 0}
+.foot .cnt{font-size:min(20vw,96px);font-weight:200}
+.ic{font-size:34px;padding:10px 18px}
+.x{position:absolute;top:calc(env(safe-area-inset-top) + 6px);right:10px;font-size:22px;opacity:.6;padding:8px}
+/* меню, редактор, статистика */
+.title{font-size:26px;font-weight:600;text-align:center;padding:18px 0 10px}
+.btn{display:block;width:100%;padding:16px;margin:8px 0;font-size:20px;font-weight:600;
+  background:var(--bar);border-radius:12px;text-align:center}
+.btn.go{font-size:34px;padding:26px;background:#fff;color:var(--bg);font-weight:300}
+.scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+.card{background:var(--bar);border-radius:12px;padding:10px 12px;margin:8px 0}
+.card.edit{display:grid;grid-template-columns:1fr auto;gap:6px}
+input{width:100%;font:inherit;font-size:18px;color:#fff;background:rgba(255,255,255,.12);border:0;
+  border-radius:8px;padding:9px 10px;-webkit-user-select:text;user-select:text}
+input::placeholder{color:var(--dim)}
+.mini{display:flex;gap:4px;justify-content:flex-end;align-items:center}
+.mini button{font-size:20px;padding:6px 10px;background:rgba(255,255,255,.12);border-radius:8px}
+.dim{color:var(--dim);font-size:15px;text-align:center;padding:6px 0}
+.warn{background:#e0a800;color:#222;border-radius:12px;padding:12px;margin:8px 0;font-weight:600;text-align:center}
+.week{display:flex;justify-content:space-between;gap:4px;margin:10px 0}
+.week div{flex:1;text-align:center;background:var(--bar);border-radius:10px;padding:8px 0;font-size:13px}
+.week b{display:block;font-size:20px;font-weight:600;margin-top:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+// ------------------------------------------------------------------ данные
+const LS = "ritual.v1";
+const DEFAULT_STEPS = [
+  {n: "Подъём",     s: 120, note: "Бад 1 + 0,5 💧"},
+  {n: "Подготовка", s: 120, note: "Ставлю жарить 🥚 + 🥕"},
+  {n: "Душ",        s: 660, note: "Контрастный душ"},
+  {n: "Прайминг",   s: 900, note: "🎧"},
+  {n: "Тренировка", s: 1200, note: "Программа дня"},
+  {n: "Завтрак",    s: 300, note: "Завтрак + бад 2"},
+  {n: "Сборы",      s: 300, note: "Собрать еду и бады на день"}
+];
+let S = load();
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(LS) || "null");
+    if (d && d.routine) return d;
+  } catch (e) {}
+  return {routine: {name: "УТРО", steps: DEFAULT_STEPS}, runs: [], run: null, lastExport: null};
+}
+function save() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) {} }
+
+// ------------------------------------------------------------------ утилиты
+const $app = document.getElementById("app");
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const pad = n => String(n).padStart(2, "0");
+const isoDay = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const esc = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const parseDur = t => {
+  t = String(t).trim().replace(",", ".");
+  let m = t.match(/^(\d+):(\d{1,2})$/);
+  if (m) return +m[1] * 60 + +m[2];
+  m = t.match(/^(\d+(?:\.\d+)?)$/);
+  return m ? Math.round(parseFloat(m[1]) * 60) : null;   // «11» = 11 минут
+};
+let audioCtx = null, wake = null, screen = "home", timer = null;
+
+function beep(n) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    for (let i = 0; i < (n || 1); i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime + i * 0.28;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.start(t); o.stop(t + 0.25);
+    }
+  } catch (e) {}
+  try { navigator.vibrate && navigator.vibrate(n === 3 ? [200, 100, 200, 100, 200] : 200); } catch (e) {}
+}
+async function lock(on) {
+  try {
+    if (on && "wakeLock" in navigator) wake = await navigator.wakeLock.request("screen");
+    else if (wake) { await wake.release(); wake = null; }
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.run && !S.run.pausedAt) lock(true); tick(); });
+
+// ------------------------------------------------------------------ прогон ритуала
+// Положение определяется по часам (startedAt), поэтому ритуал не «сползает»,
+// даже если телефон заблокировался или приложение закрыли.
+function cum(steps) { let t = 0; return steps.map(s => (t += s.s, t - s.s)); }
+function total(steps) { return steps.reduce((a, s) => a + s.s, 0); }
+function elapsed(r) { return ((r.pausedAt || Date.now()) - r.startedAt - r.pausedTotal) / 1000; }
+function posOf(r) {
+  const c = cum(r.steps), el = elapsed(r);
+  if (el >= total(r.steps)) return {idx: r.steps.length, el, c};
+  let i = 0;
+  while (i + 1 < c.length && c[i + 1] <= el) i++;
+  return {idx: i, el, c};
+}
+function startRun() {
+  const steps = S.routine.steps.filter(s => s.s > 0).map(s => ({...s}));
+  if (!steps.length) return;
+  S.run = {id: Date.now(), startedAt: Date.now(), pausedAt: null, pausedTotal: 0, steps, marks: {}, seen: 0};
+  save(); try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  lock(true); screen = "run"; render(); beep(1);
+}
+function markUpTo(r, idx, how) {          // отметить пройденные шаги
+  for (let i = r.seen; i < idx; i++) {
+    if (!r.marks[i]) r.marks[i] = {how: how, act: how === "auto" ? r.steps[i].s : null};
+  }
+  r.seen = Math.max(r.seen, idx);
+}
+function tick() {
+  const r = S.run;
+  if (!r || screen !== "run") return;
+  const p = posOf(r);
+  if (p.idx > r.seen) {                    // шаг сменился сам
+    const was = r.seen;
+    markUpTo(r, p.idx, "auto"); save();
+    if (p.idx >= r.steps.length) { finishRun(true); return; }
+    if (document.visibilityState === "visible") beep(1);
+  }
+  paintRun(p);
+}
+function jump(r, targetSec) {              // сдвиг положения по часам
+  r.startedAt = (r.pausedAt || Date.now()) - r.pausedTotal - targetSec * 1000;
+}
+function next() {
+  const r = S.run; if (!r) return;
+  const p = posOf(r);
+  if (p.idx >= r.steps.length) return;
+  r.marks[p.idx] = {how: "next", act: Math.round(p.el - p.c[p.idx])};
+  r.seen = Math.max(r.seen, p.idx + 1);
+  if (p.idx + 1 >= r.steps.length) { finishRun(true); return; }
+  jump(r, p.c[p.idx + 1]); save(); tick();
+}
+function prev() {
+  const r = S.run; if (!r) return;
+  const p = posOf(r);
+  const into = p.el - p.c[p.idx];
+  const to = (into > 3 || p.idx === 0) ? p.idx : p.idx - 1;
+  delete r.marks[to]; r.seen = Math.min(r.seen, to);
+  jump(r, p.c[to]); save(); tick();
+}
+function togglePause() {
+  const r = S.run; if (!r) return;
+  if (r.pausedAt) { r.pausedTotal += Date.now() - r.pausedAt; r.pausedAt = null; lock(true); }
+  else { r.pausedAt = Date.now(); lock(false); }
+  save(); tick();
+}
+function finishRun(full) {
+  const r = S.run; if (!r) return;
+  const rec = {
+    id: r.id, day: isoDay(new Date(r.startedAt)),
+    start: pad(new Date(r.startedAt).getHours()) + ":" + pad(new Date(r.startedAt).getMinutes()),
+    routine: S.routine.name, full: !!full,
+    planned: total(r.steps),
+    steps: r.steps.map((s, i) => ({n: s.n, plan: s.s, how: (r.marks[i] || {}).how || "none", act: (r.marks[i] || {}).act}))
+  };
+  S.runs.push(rec); S.run = null; save(); lock(false);
+  if (full) beep(3);
+  screen = full ? "done" : "home"; S.last = rec; save(); render();
+}
+
+// ------------------------------------------------------------------ экраны
+function render() {
+  clearInterval(timer);
+  if (screen === "run" && S.run) { renderRun(); timer = setInterval(tick, 250); return; }
+  if (screen === "edit") return renderEdit();
+  if (screen === "stats") return renderStats();
+  if (screen === "done") return renderDone();
+  renderHome();
+}
+function renderHome() {
+  const due = !S.lastExport || (Date.now() - S.lastExport) > 7 * 864e5;
+  const unsynced = S.runs.filter(r => !r.synced).length;
+  const warn = (due && unsynced) ? `<div class="warn">⬆ ПОРА ВЫГРУЗИТЬ СТАТИСТИКУ (${unsynced})</div>` : "";
+  $app.innerHTML = `<div class="title">${esc(S.routine.name)}</div>
+    <div class="dim">${S.routine.steps.length} ШАГОВ · ${fmt(total(S.routine.steps))}</div>${warn}
+    <div class="scroll">
+      <button class="btn go" id="go">▶</button>
+      <button class="btn" id="ed">✏️</button>
+      <button class="btn" id="st">📊</button>
+      <button class="btn" id="ex">⬆ ВЫГРУЗИТЬ${unsynced ? " · " + unsynced : ""}</button>
+    </div>`;
+  document.getElementById("go").onclick = () => { if (S.run) { screen = "run"; render(); } else startRun(); };
+  document.getElementById("ed").onclick = () => { screen = "edit"; render(); };
+  document.getElementById("st").onclick = () => { screen = "stats"; render(); };
+  document.getElementById("ex").onclick = exportRuns;
+}
+function renderRun() {
+  $app.innerHTML = `<button class="x" id="x">✕</button>
+    <div class="big clock" id="clk" role="button">0:00</div>
+    <div class="list" id="lst"></div>
+    <div class="foot"><button class="ic" id="pv">⏮</button><div class="big cnt" id="cn">1/1</div><button class="ic" id="nx">⏭</button></div>`;
+  document.getElementById("pv").onclick = prev;
+  document.getElementById("nx").onclick = next;
+  document.getElementById("clk").onclick = togglePause;
+  document.getElementById("x").onclick = () => { if (confirm("ЗАКОНЧИТЬ РАНЬШЕ?")) finishRun(false); };
+  tick();
+}
+function paintRun(p) {
+  const r = S.run; if (!r) return;
+  const idx = Math.min(p.idx, r.steps.length - 1), st = r.steps[idx];
+  const left = p.c[idx] + st.s - p.el;
+  const clk = document.getElementById("clk");
+  if (!clk) return;
+  clk.textContent = fmt(left);
+  clk.classList.toggle("paused", !!r.pausedAt);
+  document.getElementById("cn").textContent = (idx + 1) + "/" + r.steps.length;
+  const rows = [];
+  for (let i = idx; i < r.steps.length; i++) {
+    const s = r.steps[i];
+    rows.push(`<div class="row${i === idx ? " cur" : ""}">${i + 1}. ${esc(s.n)}: ${fmt(s.s)}${s.note ? " • " + esc(s.note) : ""}</div>`);
+  }
+  document.getElementById("lst").innerHTML = rows.join("");
+}
+function renderDone() {
+  const l = S.last, ok = l ? l.steps.filter(s => s.how !== "none").length : 0;
+  $app.innerHTML = `<div class="big clock" style="font-size:90px">✅</div>
+    <div class="title">ГОТОВО</div>
+    <div class="dim">${l ? ok + " / " + l.steps.length + " ШАГОВ" : ""}</div>
+    <div class="scroll"><button class="btn" id="ok">ОК</button></div>`;
+  document.getElementById("ok").onclick = () => { screen = "home"; render(); };
+}
+function renderEdit() {
+  const rows = S.routine.steps.map((s, i) => `<div class="card edit" data-i="${i}">
+      <input data-k="n" placeholder="НАЗВАНИЕ" value="${esc(s.n)}">
+      <input data-k="s" inputmode="decimal" placeholder="М:СС" style="width:84px" value="${fmt(s.s)}">
+      <input data-k="note" placeholder="ЗАМЕТКА (БАД, ЕДА…)" value="${esc(s.note)}" style="grid-column:1/2">
+      <div class="mini"><button data-a="up">▲</button><button data-a="dn">▼</button><button data-a="rm">✕</button></div>
+    </div>`).join("");
+  $app.innerHTML = `<div class="title">✏️ ${esc(S.routine.name)}</div>
+    <div class="scroll">${rows}<button class="btn" id="add">➕</button>
+    <div class="dim">ВРЕМЯ: 2:30 ИЛИ 11 (= 11 МИНУТ)</div></div>
+    <button class="btn" id="back">⬅</button>`;
+  $app.querySelectorAll("input").forEach(inp => inp.onchange = () => {
+    const i = +inp.closest(".card").dataset.i, k = inp.dataset.k, st = S.routine.steps[i];
+    if (k === "s") { const v = parseDur(inp.value); if (v != null) st.s = v; inp.value = fmt(st.s); }
+    else st[k] = inp.value.trim();
+    save();
+  });
+  $app.querySelectorAll(".mini button").forEach(b => b.onclick = () => {
+    const i = +b.closest(".card").dataset.i, a = b.dataset.a, A = S.routine.steps;
+    if (a === "rm") A.splice(i, 1);
+    if (a === "up" && i > 0) [A[i - 1], A[i]] = [A[i], A[i - 1]];
+    if (a === "dn" && i < A.length - 1) [A[i + 1], A[i]] = [A[i], A[i + 1]];
+    save(); renderEdit();
+  });
+  document.getElementById("add").onclick = () => { S.routine.steps.push({n: "Шаг", s: 60, note: ""}); save(); renderEdit(); };
+  document.getElementById("back").onclick = () => { screen = "home"; render(); };
+}
+function monday(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+function renderStats() {
+  const mon = monday(new Date()), names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"];
+  const wk = names.map((n, i) => {
+    const d = new Date(mon); d.setDate(d.getDate() + i);
+    const rs = S.runs.filter(r => r.day === isoDay(d));
+    const full = rs.some(r => r.full);
+    return `<div>${n}<b>${full ? "✅" : rs.length ? "◐" : "·"}</b></div>`;
+  }).join("");
+  const week = S.runs.filter(r => r.day >= isoDay(mon)).length;
+  const last = S.runs.slice(-7).reverse().map(r => {
+    const ok = r.steps.filter(s => s.how !== "none").length;
+    return `<div class="card">${r.day.slice(8)}.${r.day.slice(5, 7)} · ${r.start} · ${ok}/${r.steps.length}${r.full ? " ✅" : " ◐"}</div>`;
+  }).join("");
+  $app.innerHTML = `<div class="title">📊 НЕДЕЛЯ: ${week}</div>
+    <div class="week">${wk}</div>
+    <div class="scroll">${last || '<div class="dim">ПРОГОНОВ ПОКА НЕТ</div>'}</div>
+    <button class="btn" id="back">⬅</button>`;
+  document.getElementById("back").onclick = () => { screen = "home"; render(); };
+}
+// ------------------------------------------------------------------ выгрузка раз в неделю
+async function exportRuns() {
+  const runs = S.runs.filter(r => !r.synced);
+  if (!runs.length) { alert("НЕЧЕГО ВЫГРУЖАТЬ"); return; }
+  const payload = JSON.stringify({v: 1, exportedAt: new Date().toISOString(), runs}, null, 1);
+  const name = "ritual_" + isoDay(new Date()) + ".json";
+  let sent = false;
+  try {
+    const file = new File([payload], name, {type: "application/json"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      await navigator.share({files: [file], title: name});   // выбери Telegram → чат с ботом
+      sent = true;
+    }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  if (!sent) {                                                  // запасной вариант: скачать файл
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([payload], {type: "application/json"}));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove(); sent = true;
+  }
+  if (sent) { runs.forEach(r => r.synced = true); S.lastExport = Date.now(); save(); render(); }
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if (S.run) screen = "run";
+render();
+</script>
+</body>
+</html>
