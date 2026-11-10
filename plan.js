@@ -76,6 +76,7 @@ function renderPlan() {
   if (pg) {
     pg.scrollTop = pScroll != null ? pScroll : Math.max(0, ((days.includes(today()) ? nowMin() / 60 : 6) - 1.5) * PHH);
     pg.onscroll = () => { pScroll = pg.scrollTop; };
+    bindDrag(pg);
     pg.onclick = e => {
       const ev = e.target.closest(".ev");
       if (ev) return openEv(+ev.dataset.id);
@@ -127,4 +128,55 @@ function openEv(id, day, from) {
     if (!id) { e.id = nextId("plan"); T("plan").push(e); }
     pday = e.day; save(); w.remove(); renderPlan();
   };
+}
+
+// ---------------------------------------------------------------- перенос дела: удерживай дело и тащи (по времени и на другой день)
+function bindDrag(pg) {
+  let d = null, tm = null, sx = 0, sy = 0, iv = null;
+  const label = () => {
+    const e = d.e, p = d.p;
+    d.el.innerHTML = (e.nopomo ? "⛔ " : "") + esc(e.title) + `<br><small>${m2hm(p.m)}–${m2hm(p.m + e.to - e.from)}</small>`;
+  };
+  const place = () => {
+    const cs = [...pg.querySelectorAll(".pcol")], r0 = cs[0].getBoundingClientRect(), dur = d.e.to - d.e.from;
+    const ci = Math.max(0, Math.min(cs.length - 1, Math.floor((d.x - r0.left) / r0.width)));
+    const m = Math.max(0, Math.min(1440 - dur, Math.round((d.y - d.off - r0.top) / PHH * 4) * 15));
+    d.p = {m, col: cs[ci]};
+    d.el.style.left = "1px"; d.el.style.width = "calc(100% - 2px)"; d.el.style.top = m / 60 * PHH + "px";
+    if (d.el.parentNode !== d.p.col) d.p.col.appendChild(d.el);
+    label();
+  };
+  const stop = () => { clearTimeout(tm); clearInterval(iv); tm = iv = null; };
+  pg.addEventListener("touchstart", ev => {
+    const el = ev.target.closest && ev.target.closest(".ev");
+    if (!el || ev.touches.length !== 1 || d) return;
+    sx = ev.touches[0].clientX; sy = ev.touches[0].clientY;
+    tm = setTimeout(() => {
+      const e = T("plan").find(x => x.id === +el.dataset.id); if (!e) return;
+      d = {e, el, x: sx, y: sy, off: sy - el.getBoundingClientRect().top};
+      el.style.zIndex = 5; el.style.opacity = ".9"; el.style.outline = "2px solid #fff";
+      try { navigator.vibrate && navigator.vibrate(15); } catch (x) {}
+      place();
+      iv = setInterval(() => {                              // автопрокрутка у верхнего и нижнего края
+        const r = pg.getBoundingClientRect();
+        if (d.y < r.top + 50) pg.scrollTop -= 10; else if (d.y > r.bottom - 50) pg.scrollTop += 10; else return;
+        place();
+      }, 16);
+    }, 350);
+  }, {passive: true});
+  pg.addEventListener("touchmove", ev => {
+    const t = ev.touches[0];
+    if (!d) { if (tm && Math.hypot(t.clientX - sx, t.clientY - sy) > 8) stop(); return; }
+    ev.preventDefault(); d.x = t.clientX; d.y = t.clientY; place();
+  }, {passive: false});
+  const end = ok => ev => {
+    stop();
+    if (!d) return;
+    ev.preventDefault();
+    const x = d; d = null;
+    if (ok) { const dur = x.e.to - x.e.from; x.e.day = x.p.col.dataset.d; x.e.from = x.p.m; x.e.to = x.p.m + dur; save(); }
+    renderPlan();
+  };
+  pg.addEventListener("touchend", end(true), {passive: false});
+  pg.addEventListener("touchcancel", end(false), {passive: false});
 }
