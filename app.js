@@ -315,6 +315,7 @@ function render() {
   if (screen === "edit") return renderEdit();
   if (screen === "why") return renderWhy();
   if (screen === "stats") return renderStats();
+  if (screen === "pomo") { renderPomo(); timer = setInterval(tickAll, 1000); return; }
   if (!S.seeded && !habits().length) return renderEmpty();
   if (tab === "day") renderDay();
   else if (tab === "plan") renderPlan();

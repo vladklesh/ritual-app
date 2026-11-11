@@ -69,11 +69,7 @@ function pomoBar() {
 function paintPomo() {
   const ph = document.getElementById("pph"); if (!ph) return;
   const bar = document.getElementById("pbar");
-  if (bar && !bar.onclick) bar.onclick = () => {
-    const off = !(S.pomoOff || {})[today()];
-    if (!confirm(off ? "СЕГОДНЯ БЕЗ ПОМИДОРОК?" : "ВКЛЮЧИТЬ ПОМИДОРКИ?")) return;
-    S.pomoOff = S.pomoOff || {}; S.pomoOff[today()] = off; save(); render();
-  };
+  if (bar && !bar.onclick) bar.onclick = () => { screen = "pomo"; render(); };
   if ((S.pomoOff || {})[today()]) return;
   const p = pomoPhase(), day = today(), c = pcfg(day);
   ph.textContent = p.ph === "work" ? "🍅" : p.ph === "rest" ? "☕" : "⏸";
@@ -119,4 +115,34 @@ function pomoTick() {
   paintPomo();
   if (screen === "plan") { const nl = document.getElementById("nowl"); if (nl) nl.style.top = nowMin() / 60 * PHH + "px"; }
   pomoPopup();
+}
+
+// ---------------------------------------------------------------- 🍅 отчёт (нажми на таймер в DAY)
+function renderPomo() {
+  _acts = [];
+  const day = today(), slots = pomoSlots(day), logs = pomoLogs(day), cur = pomoPhase().s;
+  const st = s => (logs.find(l => l.slot === s) || {}).status;
+  const y = slots.filter(s => st(s) === "yes").length, n = slots.filter(s => st(s) === "no").length;
+  const sq = slots.map(s => {
+    const l = logs.find(x => x.slot === s), cls = l ? (l.status === "yes" ? "y" : l.status === "no" ? "n" : "p") : (s === cur ? "c" : "");
+    return `<div class="sq ${cls}">${m2hm(s)}<b>${l ? (l.status === "yes" ? "✅" : l.status === "no" ? "❌" : "•") : "·"}</b></div>`;
+  }).join("") || `<div class="dim">СЛОТОВ НЕТ</div>`;
+  const tot = n0 => { const ls = T("pomo_log").filter(l => l.day > addDays(day, -n0)); return [ls.filter(l => l.status === "yes").length, ls.filter(l => l.status === "no").length]; };
+  const w7 = tot(7), w30 = tot(30), all = [T("pomo_log").filter(l => l.status === "yes").length, T("pomo_log").filter(l => l.status === "no").length];
+  const pct = a => a[0] + a[1] ? Math.round(a[0] / (a[0] + a[1]) * 100) + "%" : "—";
+  const hist = [];
+  for (let k = 0; k < 14; k++) {
+    const d = addDays(day, -k), ls = pomoLogs(d); if (!ls.length) continue;
+    hist.push(`${d.slice(8)}.${d.slice(5, 7)} · ✅ ${ls.filter(l => l.status === "yes").length} · ❌ ${ls.filter(l => l.status === "no").length}`);
+  }
+  const did = T("pomo_log").filter(l => l.day > addDays(day, -7) && l.did).sort((a, b) => (b.day + pad(b.slot)).localeCompare(a.day + pad(a.slot)))
+    .slice(0, 40).map(l => `${l.day.slice(8)}.${l.day.slice(5, 7)} ${m2hm(l.slot)} · ${l.plan ? "ПЛАН: " + l.plan + " → " : ""}${l.did}`);
+  const off = (S.pomoOff || {})[day];
+  W(`<div class="title">🍅 ${pcfg(day).work}/${pcfg(day).len - pcfg(day).work}</div>
+    <div class="card">СЕГОДНЯ: ✅ ${y} · ❌ ${n} · ВСЕГО ${slots.length}</div><div class="sqs">${sq}</div>
+    <div class="card">7 ДНЕЙ: ✅ ${w7[0]} · ❌ ${w7[1]} · ${pct(w7)}<br>30 ДНЕЙ: ✅ ${w30[0]} · ❌ ${w30[1]} · ${pct(w30)}<br>ВСЁ ВРЕМЯ: ✅ ${all[0]} · ❌ ${all[1]} · ${pct(all)}</div>
+    <div class="sec">ПО ДНЯМ</div><div class="pre" style="font-size:15px">${hist.join("\n") || "ПОКА ПУСТО"}</div>
+    <div class="sec">❌ ЧТО ДЕЛАЛ ВМЕСТО (7 ДНЕЙ)</div><div class="pre" style="font-size:15px">${esc(did.join("\n")) || "ПОКА ПУСТО"}</div>` +
+    B(off ? "▶ ВКЛЮЧИТЬ 🍅 СЕГОДНЯ" : "⏸ СЕГОДНЯ БЕЗ 🍅", () => { S.pomoOff = S.pomoOff || {}; S.pomoOff[day] = !off; save(); renderPomo(); }) +
+    B("⬅", () => { screen = tab = "day"; render(); }));
 }
