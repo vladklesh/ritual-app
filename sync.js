@@ -27,7 +27,7 @@ async function ghPut(path, text, msg) {
     body: JSON.stringify({message: msg, content: b64utf8(text), sha})});
   if (!r.ok) throw new Error("PUT " + path + " " + r.status);
 }
-async function syncNow(manual) {
+async function syncNow(manual, shopOnly) {         // shop bot — при каждом открытии (не чаще раза в 20 мин), копия — раз в день
   if (syncBusy || !S.gh || !S.gh.token) return;
   syncBusy = true; S.sync = S.sync || {};
   try {
@@ -36,6 +36,8 @@ async function syncNow(manual) {
       S.db.shop_inc = shop.rows.map(r => ({ref: r.ref, day: r.day, amount: +r.amount || 0}));
       S.sync.shopAt = shop.at || null;
     }
+    S.sync.pullAt = Date.now();
+    if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || screen === "set") render(); return; }
     const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
     await ghPut("backup.json", payload, "backup " + today());
     S.sync.day = today(); S.sync.backupAt = Date.now(); S.sync.err = null; S.lastExport = Date.now();
@@ -47,9 +49,11 @@ async function syncNow(manual) {
   } finally { syncBusy = false; }
 }
 function syncTick() {
-  if (!S.gh || !S.gh.token || syncBusy || (S.sync && S.sync.day === today()) || Date.now() < syncNext) return;
+  if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-  syncNext = Date.now() + 60000; syncNow(false);
+  const sy = S.sync || {}, daily = sy.day !== today(), pull = !sy.pullAt || Date.now() - sy.pullAt > 20 * 60000;
+  if (!daily && !pull) return;
+  syncNext = Date.now() + 60000; syncNow(false, !daily);
 }
 function syncLabel() {
   if (!S.gh || !S.gh.token) return "ПОДКЛЮЧИТЬ";
@@ -59,7 +63,8 @@ function syncLabel() {
 }
 function syncSetup() {
   const on = S.gh && S.gh.token;
-  sheetOf(b => `<div class="stt">🔄 РАЗ В ДЕНЬ: SHOP BOT → ПРИЛОЖЕНИЕ,\nКОПИЯ ДАННЫХ → ${GH_REPO}${S.sync && S.sync.err ? "\n⚠ " + esc(S.sync.err) : ""}</div>` +
+  const sy = S.sync || {}, shopT = sy.shopAt ? new Date(sy.shopAt).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—";
+  sheetOf(b => `<div class="stt">🔄 SHOP BOT → ПРИЛОЖЕНИЕ: ПРИ ОТКРЫТИИ\nКОПИЯ ДАННЫХ → ${GH_REPO}: РАЗ В ДЕНЬ\nСЕРВЕР ВЫЛОЖИЛ SHOP BOT: ${shopT}${sy.err ? "\n⚠ " + esc(sy.err) : ""}</div>` +
     (on ? b("🔄 СЕЙЧАС", () => { closeTop(); syncNow(true); }, "btn") : "") +
     b(on ? "🔑 СМЕНИТЬ ТОКЕН" : "🔑 ВСТАВИТЬ ТОКЕН", () => { closeTop(); askText("ТОКЕН GITHUB (github_pat_…)", t => {
       t = t.trim(); if (!/^(github_pat_|ghp_)\w+/.test(t)) { toast("ЭТО НЕ ТОКЕН"); return false; }
