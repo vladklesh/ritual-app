@@ -1,6 +1,6 @@
 // Оффлайн-кэш: приложение открывается без интернета.
-const CACHE = "ritual-v14";
-const FILES = ["./", "./index.html", "./app.js?v=14", "./training.js?v=14", "./plan.js?v=14", "./pomo.js?v=14", "./work.js?v=14", "./sync.js?v=14", "./debts.js?v=14", "./spheres.js?v=14", "./tasks.js?v=14", "./stats.js?v=14", "./main.js?v=14", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "ritual-v15";
+const FILES = ["./", "./index.html", "./app.js?v=15", "./training.js?v=15", "./plan.js?v=15", "./pomo.js?v=15", "./work.js?v=15", "./sync.js?v=15", "./debts.js?v=15", "./spheres.js?v=15", "./tasks.js?v=15", "./stats.js?v=15", "./main.js?v=15", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
