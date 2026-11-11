@@ -55,10 +55,16 @@ function renderPlan() {
     const dh = `<div class="pdays">${days.map(d => `<div class="${d === today() ? "td" : ""}" data-d="${d}">${WD[dObj(d).getDay()]}<br><b>${+d.slice(8)}</b></div>`).join("")}</div>`;
     const hours = Array.from({length: 24}, (_, h) => h ? `<span style="top:${h * PHH}px">${pad(h)}:00</span>` : "").join("");
     const cols = days.map(d => {
-      const evs = layout(planOf(d)).map(p => {
-        const e = p.e, h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev${e.spill ? " sp" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${p.l / p.n * 100}% + 1px);width:calc(${100 / p.n}% - 2px);background:${e.color};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
-      }).join("");
+      const all = planOf(d), bg = all.filter(e => e.work), fg = all.filter(e => !e.work);   // смена и дорога — фоном на всю ширину, дела — поверх
+      const box = (e, l, wd, z) => {
+        const h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
+        return `<div class="ev${e.spill ? " sp" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:${l};width:${wd};background:${e.color};z-index:${z};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
+      };
+      const evs = layout(bg).map(p => box(p.e, `calc(${p.l / p.n * 100}% + 1px)`, `calc(${100 / p.n}% - 2px)`, 1)).join("") +
+        layout(fg).map(p => {
+          const over = bg.some(b => b.from < p.e.to && b.to > p.e.from), x0 = over ? 22 : 0, span = 100 - x0;
+          return box(p.e, `calc(${x0 + p.l / p.n * span}% + 1px)`, `calc(${span / p.n}% - 2px)`, 3);
+        }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
     }).join("");
