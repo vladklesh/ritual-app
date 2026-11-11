@@ -71,7 +71,12 @@ const wplace = w => getPlace(w.place_id) || {name: "?", rate: 0, unit: "shift"};
 const due = w => (w.earned || 0) + (w.exp || 0);
 const isHourly = p => !!p && (p.unit === "hour" || /mcg|манифик/i.test(p.name || ""));
 const ceilH = h => Math.ceil(h - 1e-9);                // часы смены округляются вверх
-function calcEarn(w) { const p = wplace(w); if (isHourly(p) && w.hours != null) w.earned = Math.round(w.hours * (p.rate || 500) * 100) / 100; }
+const isMCG = p => !!p && /mcg|манифик/i.test(p.name || "");
+function calcEarn(w) {                             // MCG: до 10 ч — минималка 5000₽, дальше 500₽/ч
+  const p = wplace(w); if (!isHourly(p) || w.hours == null) return;
+  const r = p.rate || 500;
+  w.earned = Math.round((isMCG(p) ? Math.max(w.hours, 10) * r : w.hours * r) * 100) / 100;
+}
 const WORK_VIEWS = ["main", "shifts", "shift", "places", "pay", "rep", "year", "rmenu"];
 const taxRate = pid => { const p = pid ? getPlace(pid) : null; return p && p.name.trim().toUpperCase() === "MCG" ? TAX_RATE : 0; };
 
