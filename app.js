@@ -366,7 +366,7 @@ function renderDay() {
       ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${S.priming && /прайминг/i.test(first.name) ? '<button class="btn" id="aud2">▶ 🎧 ПРАЙМИНГ</button>' : ""}${winput}<div class="acts">${btns}</div>
 `;
   }
-  shell((typeof pomoBar === "function" ? pomoBar() : "") + body);
+  shell(body + (typeof pomoBar === "function" ? pomoBar() : ""));
   document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
     if (first.typ === "mb") {
       if (b.dataset.a === "go") { if (S.run) { screen = "run"; render(); } else startRun(); return; }
