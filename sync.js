@@ -36,6 +36,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
       S.db.shop_inc = shop.rows.map(r => ({ref: r.ref, day: r.day, amount: +r.amount || 0}));
       S.sync.shopAt = shop.at || null;
     }
+    await pullInbox();
     S.sync.pullAt = Date.now();
     if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || screen === "set") render(); return; }
     const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
@@ -47,6 +48,21 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
     syncNext = Date.now() + 10 * 60000;
     if (manual) toast("🔄 НЕ ВЫШЛО: " + S.sync.err + "\nПОПРОБУЮ ПОЗЖЕ САМ");
   } finally { syncBusy = false; }
+}
+// 📥 Задачи от Claude (инвест-дайджест и др.): inbox/tasks.json = [{id, text, day?}], каждая добавляется один раз
+async function pullInbox() {
+  const box = await ghGetJson("inbox/tasks.json");
+  if (!Array.isArray(box)) return;
+  S.inboxSeen = S.inboxSeen || [];
+  const fresh = box.filter(x => x && x.id && x.text && !S.inboxSeen.includes(String(x.id)));
+  if (!fresh.length) return;
+  fresh.forEach(x => {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
+    T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
+    S.inboxSeen.push(String(x.id));
+  });
+  S.inboxSeen = S.inboxSeen.slice(-500); save();
+  toast("📥 НОВЫЕ ЗАДАЧИ ОТ CLAUDE: " + fresh.length + "\n" + fresh.map(x => String(x.text).slice(0, 60)).join("\n"));
 }
 function syncTick() {
   if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
