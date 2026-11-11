@@ -190,9 +190,9 @@ function unpaidLine(unp, ym) {                   // ждём ставку и ➖
   if (ex) L.push(`В ТОМ ЧИСЛЕ ➖: ${fmtRub(ex)}`);
   return L.join("\n");
 }
-const owedLine = p => {
+const owedLine = p => {                          // внутренняя история, видна только в ЗП
   const o = p.owed || 0; if (!o) return null;
-  return o > 0 ? `ДОЛГ · ${p.name}: +${fmtRub(o)} (Я ДОЛЖЕН КОМПАНИИ, УЧТЁТСЯ ПРИ ВЫЧЕТАХ)` : `ДОЛГ · ${p.name}: −${fmtRub(-o)} (КОМПАНИЯ ДОЛЖНА МНЕ)`;
+  return `${o > 0 ? "+" : "−"}${fmtRub(Math.abs(o))} ${p.name} должон`;
 };
 const pendingTransfers = () => T("transfers").filter(t => !t.done);
 
@@ -302,11 +302,11 @@ function alarmSheet(w, txt) {
 }
 function pickPlace(cb, withNew) {
   const ps = places();
-  if (ps.length === 1 && !withNew) return cb(ps[0].id);
-  choose("ГДЕ РАБОТАЛ / БУДЕШЬ РАБОТАТЬ?", ps.map(p => [placeLabel(p), () => { closeTop(); cb(p.id); }])
-    .concat(withNew ? [["➕ КОМПАНИЯ", () => { closeTop(); askText("КАК НАЗЫВАЕТСЯ КОМПАНИЯ?\nИ СТАВКА. ПРИМЕР: ОЗОН 6000 (ЗА СМЕНУ) ИЛИ MCG 500/Ч", t => {
-      const r = parsePlace(t); if (!r) { toast("НЕ ПОНЯЛ. ПРИМЕР: ОЗОН 6000"); return false; }
-      cb(savePlace(r[0], r[1], r[2]));
+  withNew = true;
+  choose("ГДЕ РАБОТАЛ / БУДЕШЬ РАБОТАТЬ?", ps.map(p => [isHourly(p) ? placeLabel(p) : p.name, () => { closeTop(); cb(p.id); }])
+    .concat(withNew ? [["➕ КОМПАНИЯ", () => { closeTop(); askText("КАК НАЗЫВАЕТСЯ КОМПАНИЯ?", t => {
+      const n = t.trim().slice(0, 30); if (!n) return false;
+      const r = parsePlace(n); cb(r ? savePlace(r[0], r[1], r[2]) : savePlace(n, 0, "shift"));
     }); }]] : []));
 }
 function closeTop() { const s = document.querySelectorAll(".sheet"); if (s.length) s[s.length - 1].remove(); }
@@ -380,15 +380,13 @@ function editStartEnd(w) {
 // ---------------------------------------------------------------- экраны
 function renderWork() {
   _acts = []; workPlanSyncAll();
-  ({main: wMain, shifts: wShifts, shift: wShift, places: wPlaces, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu, ...WEXT}[wv.v] || wMain)();
+  ({main: wMain, shifts: wShifts, shift: wShift, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu, ...WEXT}[wv.v] || wMain)();
 }
 function wMain() {
   const ym = today().slice(0, 7), unp = unpaidRows(), pend = pendingTransfers(), fill = workPending();
   let h = `<div class="pre">${esc(reportText(ym))}</div>`;
   if (unp.length) h += `<div class="dim" style="white-space:pre-line">${esc(unpaidLine(unp, ym))}</div>`;
-  const wmap = {}; places().forEach(p => { const o = owedLine(p); if (o) h += `<div class="dim">${esc(o)}</div>`; });
-  h += `<div class="r2">${B("➕", addShiftOnDate)}${B("💰 ЗП", payStart)}${B("🗓 ИТОГИ", () => wgo("rmenu"))}</div>`;
-  h += `<div class="r2">${B("📋 СМЕНЫ", () => wgo("shifts"))}${B("📍 МЕСТА", () => wgo("places"))}</div>`;
+  h += `<div class="r2 ic">${B("➕", addShiftOnDate)}${B("💰", payStart)}${B("📝", () => wgo("shifts"))}${B("📊", () => wgo("rmenu"))}</div>`;
   if (fill.length) h += B(`✍ ДОЗАПОЛНИТЬ: ${fill.length}`, () => shiftChain(fill[0].id));
   if (pend.length) {
     h += `<div class="sec">ПЕРЕВЕДИ</div>`;
@@ -402,39 +400,31 @@ function wShifts() {
 }
 function wShift() {
   const w = workRow(wv.id); if (!w) return wgo("shifts");
-  const p = wplace(w), ol = owedLine(p);
-  const L = [`${ddmm(w.day)} · ${p.name}`, `ЧАСОВ: ${w.hours == null ? "НЕТ" : gnum(w.hours)}${w.t_from ? ` (${w.t_from}–${w.t_to || "?"})` : ""}`,
-    `СТАВКА: ${w.earned == null ? "НЕТ" : fmtRub(w.earned)}`, `БОНУСЫ: ${w.tips == null ? "НЕТ" : fmtRub(w.tips)}`];
-  const si = T("shop_inc").filter(r => r.day === w.day).reduce((s, r) => s + (r.amount || 0), 0);
-  if (si) L.push(`🛒 SHOP BOT: ${fmtRub(si)}`);
-  if (w.exp) L.push(`➖ ВНУТРИ КОМПАНИИ: ${fmtRub(w.exp)}`);
-  if (ol) L.push(ol);
+  const p = wplace(w), si = T("shop_inc").filter(r => r.day === w.day).reduce((s, r) => s + (r.amount || 0), 0);
+  const L = [`${ddmm(w.day)} · ${p.name}${w.note ? " — " + w.note : ""}`, `${w.hours == null ? "?" : gnum(w.hours)} Ч${w.t_from ? ` · ${w.t_from}–${w.t_to || "?"}` : ""}`,
+    `СТАВКА: ${w.earned == null ? "НЕТ" : fmtRub(w.earned)}`, `🫴🏻 БОНУСЫ: ${w.tips == null ? "НЕТ" : fmtRub(w.tips)}${si ? ` + 🛒 SHOP BOT ${fmtRub(si)}` : ""}`];
+  if (w.exp) L.push(`➖ НА РАБОТЕ: ${fmtRub(w.exp)}`);
   if (w.paid_on) L.push(`СТАВКА ПОЛУЧЕНА: ${ddmm(w.paid_on)}`);
-  if (w.note) L.push(w.note.slice(0, 200));
   const re = () => renderWork();
-  W(`<div class="pre">${esc(L.join("\n"))}</div>
-    <div class="r2">${B("⏱ ВРЕМЯ", () => askText(`ВРЕМЯ СМЕНЫ ${ddmm(w.day)}\nНАПИШИ: 7:00 - 3:00 ИЛИ ЧАСЫ (8)`, t => {
-      const rg = parseRange(t), h = rg ? ceilH(rg[2]) : parseHours(t); if (h == null) { toast("НЕ ПОНЯЛ"); return false; }
-      w.hours = h; w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; calcEarn(w);
-      save(); re(); return true; }, {val: w.t_from ? `${w.t_from} - ${w.t_to}` : ""}))}
-    ${B("💵 БОНУСЫ", () => askText(`БОНУСЫ ${ddmm(w.day)}\nНОВАЯ СУММА (1500 ИЛИ 500+1000) ИЛИ +300, ЧТОБЫ ПРИБАВИТЬ`, t => {
-      const add = t.trim().startsWith("+"), a = parseSum(add ? t.trim().slice(1) : t); if (a == null) { toast("НЕ ПОНЯЛ"); return false; }
-      w.tips = add ? (w.tips || 0) + a : a; save(); re(); return true; }))}</div>
-    <div class="r2">${B("➖ РАСХОДЫ", () => askText(`➖ ТРАТЫ ВНУТРИ КОМПАНИИ ${ddmm(w.day)}\nПРИХОДЯТ ВМЕСТЕ С ЗП. СУММА (450+300) ИЛИ +200`, t => {
-      const add = t.trim().startsWith("+"), a = parseSum(add ? t.trim().slice(1) : t); if (a == null) { toast("НЕ ПОНЯЛ"); return false; }
-      const tot = add ? (w.exp || 0) + a : a; w.exp = tot || null; save(); re(); return true; }))}
-    ${B("🏢 ДОЛГ", () => askText(`🏢 ДОЛГ · ${p.name.toUpperCase()}\n+1421 (Я ДОЛЖЕН) ИЛИ −500 (МНЕ ДОЛЖНЫ), 0 = НИКТО`, t => {
-      const m = t.match(/^\s*([+\-−–]?)\s*(\d[\d\s]*(?:[.,]\d+)?)\s*$/); if (!m) { toast("НЕ ПОНЯЛ"); return false; }
-      const v = parseFloat(m[2].replace(/\s/g, "").replace(",", ".")); p.owed = "-−–".includes(m[1]) && m[1] ? -v : v; save(); re(); return true; }))}</div>
-    <div class="r2">${B("✏ ЗАНОВО", () => { w.hours = w.earned = w.tips = w.paid_on = w.t_from = w.t_to = null; save(); shiftChain(w.id); })}
-    ${B("🗑", () => { if (confirm("УДАЛИТЬ СМЕНУ?")) { S.db.work_days = T("work_days").filter(x => x.id !== w.id); save(); wgo("shifts"); } })}</div>
-    ${B("⬅", () => wgo("shifts"))}`);
+  const sumAsk = (title, cur, set) => askText(`${title} ${ddmm(w.day)}\nНОВАЯ СУММА (1500 ИЛИ 500+1000) ИЛИ +300, ЧТОБЫ ПРИБАВИТЬ`, t => {
+    const add = t.trim().startsWith("+"), a = parseSum(add ? t.trim().slice(1) : t); if (a == null) { toast("НЕ ПОНЯЛ"); return false; }
+    set(add ? (cur || 0) + a : a); save(); re(); return true; });
+  W(`<div class="pre">${esc(L.join("\n"))}</div><div class="r2 ic">
+    ${B("🫴🏻", () => sumAsk("🫴🏻 БОНУСЫ, ЧАЕВЫЕ, МОНЕТЫ (КРОМЕ SHOP BOT)", w.tips, v => w.tips = v))}
+    ${B("➖", () => sumAsk("➖ РАСХОДЫ НА РАБОТЕ (ПРИДУТ С ЗП)", w.exp, v => w.exp = v || null))}
+    ${B("✏️", () => shiftEdit(w))}
+    ${B("🗑️", () => { if (confirm("УДАЛИТЬ СМЕНУ?")) { S.db.work_days = T("work_days").filter(x => x.id !== w.id); save(); workPlanSyncAll(); wgo("shifts"); } })}
+    ${B("⬅", () => wgo("shifts"))}</div>`);
 }
-function wPlaces() {
-  W(`<div class="title">МЕСТА</div>` + places().map(p => B(esc(placeLabel(p)), () => askText(`НОВАЯ СТАВКА · ${p.name.toUpperCase()}\nПРИМЕР: 600`, t => {
-    const a = parseSum(t); if (a == null) { toast("НЕ ПОНЯЛ"); return false; } p.rate = a; save(); renderWork(); return true; }))).join("") +
-    B("➕ НОВОЕ МЕСТО", () => askText("НАЗВАНИЕ И СТАВКА. ПРИМЕР: MCG 500/Ч ИЛИ ОЗОН 6000 (ЗА СМЕНУ)", t => {
-      const r = parsePlace(t); if (!r) { toast("НЕ ПОНЯЛ"); return false; } savePlace(r[0], r[1], r[2]); renderWork(); return true; })) + B("⬅", () => wgo("main")));
+function shiftEdit(w) {                            // ✏️ место, описание, часы (часы двигают конец смены в 📅)
+  const p = wplace(w);
+  sheetOf(b => `<div class="stt">✏️ ${ddmm(w.day)}</div>` +
+    b(`🏢 ${esc(p.name)}`, () => { closeTop(); pickPlace(pid => { w.place_id = pid; calcEarn(w); save(); renderWork(); }, true); }, "btn") +
+    b(`📝 ${esc(w.note || "ОПИСАНИЕ")}`, () => { closeTop(); askText("ОПИСАНИЕ СМЕНЫ (НАПРИМЕР: РЖД)", t => { w.note = t.trim().slice(0, 300) || null; save(); renderWork(); return true; }, {val: w.note || ""}); }, "btn") +
+    b(`⏱ ${w.hours == null ? "?" : gnum(w.hours)} Ч`, () => { closeTop(); askText("СКОЛЬКО ЧАСОВ?", t => {
+      const h = parseHours(t); if (h == null) { toast("НЕ ПОНЯЛ"); return false; }
+      w.hours = ceilH(h); if (w.t_from) w.t_to = m2hm((hm2m(w.t_from) + w.hours * 60) % 1440); calcEarn(w); save(); renderWork(); return true; }, {val: w.hours == null ? "" : gnum(w.hours)}); }, "btn") +
+    `<div class="acts">${b("⬅", closeTop)}</div>`);
 }
 // ---- ЗП
 function payStart() {

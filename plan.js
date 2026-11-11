@@ -55,16 +55,14 @@ function renderPlan() {
     const dh = `<div class="pdays">${days.map(d => `<div class="${d === today() ? "td" : ""}" data-d="${d}">${WD[dObj(d).getDay()]}<br><b>${+d.slice(8)}</b></div>`).join("")}</div>`;
     const hours = Array.from({length: 24}, (_, h) => h ? `<span style="top:${h * PHH}px">${pad(h)}:00</span>` : "").join("");
     const cols = days.map(d => {
-      const all = planOf(d), bg = all.filter(e => e.work), fg = all.filter(e => !e.work);   // смена и дорога — фоном на всю ширину, дела — поверх
-      const box = (e, l, wd, z) => {
-        const h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev${e.spill ? " sp" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:${l};width:${wd};background:${e.color};z-index:${z};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
-      };
-      const evs = layout(bg).map(p => box(p.e, `calc(${p.l / p.n * 100}% + 1px)`, `calc(${100 / p.n}% - 2px)`, 1)).join("") +
-        layout(fg).map(p => {
-          const over = bg.some(b => b.from < p.e.to && b.to > p.e.from), x0 = over ? 22 : 0, span = 100 - x0;
-          return box(p.e, `calc(${x0 + p.l / p.n * span}% + 1px)`, `calc(${span / p.n}% - 2px)`, 3);
-        }).join("");
+      // маленькое дело — поверх большого: сначала длинные, каждое следующее, если пересекается, сдвигается вправо и ложится сверху
+      const all = planOf(d).slice().sort((a, b) => (b.to - b.from) - (a.to - a.from) || a.from - b.from), placed = [];
+      const evs = all.map(e => {
+        const depth = placed.filter(x => x.e.from < e.to && x.e.to > e.from).reduce((m, x) => Math.max(m, x.depth + 1), 0);
+        placed.push({e, depth});
+        const x0 = Math.min(depth * 20, 60), h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
+        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${e.color};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
+      }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
     }).join("");
@@ -136,13 +134,12 @@ function openShiftEv(e0, day, at) {             // смена (и дорога):
     <input type="date" id="sd" value="${e.day}" style="margin-top:8px">
     <div class="r2"><input type="time" id="sf" value="${m2hm(e.from)}"><input type="time" id="stt" value="${m2hm(e.to % 1440)}"></div>
     <div class="dim">КОНЕЦ РАНЬШЕ НАЧАЛА = СЛЕДУЮЩИЙ ДЕНЬ · ${gnum(Math.ceil((e.to - e.from) / 60 - 1e-9))} Ч</div>
-    <button class="btn" id="sadd">➕ ДЕЛО ПОВЕРХ СМЕНЫ</button><button class="btn" id="sopen">💵 СУММА, БОНУСЫ, ЗП</button>
+<button class="btn" id="sopen">💵 СУММА, БОНУСЫ, ЗП</button>
     <div class="acts"><button id="sdel">🗑</button><button id="scl">✕</button><button id="sok">✅</button></div></div>`;
   document.body.appendChild(sh);
   const g = i => sh.querySelector("#" + i);
   sh.onclick = ev => { if (ev.target === sh) sh.remove(); };
   g("scl").onclick = () => sh.remove();
-  g("sadd").onclick = () => { sh.remove(); openEv(null, day || e.day, at != null ? at : e.from); };
   g("sopen").onclick = () => { sh.remove(); tab = screen = "work"; wv = {v: "shift", id: e.work}; render(); };
   g("sdel").onclick = () => { if (!confirm("УДАЛИТЬ СМЕНУ?")) return; S.db.work_days = T("work_days").filter(x => x.id !== e.work); S.db.plan = T("plan").filter(x => x.work !== e.work); save(); sh.remove(); renderPlan(); };
   g("sok").onclick = () => {
