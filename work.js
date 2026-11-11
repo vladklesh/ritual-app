@@ -100,12 +100,12 @@ function workStage(w) {
 }
 function workPending() {
   return T("work_days").filter(w => w.day <= today() && !w.src && (w.hours == null ||
-    (!isHourly(wplace(w)) && w.earned == null) || w.tips == null)).sort((a, b) => a.day.localeCompare(b.day));
+    (!isHourly(wplace(w)) && w.earned == null) || (w.tips == null && shiftOver(w)))).sort((a, b) => a.day.localeCompare(b.day));
 }
 function workPrompt(w) {
   const p = wplace(w), head = `РАБОТА ${ddmm(w.day)} · ${p.name.toUpperCase()}`, st = workStage(w);
   if (st === "hours") return w.day >= today()
-    ? `${head}\nСО СКОЛЬКО НАЧИНАЕШЬ? ПРИМЕР: 11 ИЛИ 11:30\nКОНЕЦ СПРОШУ ВЕЧЕРОМ (ИЛИ СРАЗУ 11:00 - 23:00)`
+    ? `${head}\nСО СКОЛЬКО НАЧИНАЕШЬ? ПРИМЕР: 7 ИЛИ 7:30\nВ 📅 ПОСТАВЛЮ 8 Ч, ДОЛЬШЕ — ТЯНИ В КАЛЕНДАРЕ (ИЛИ СРАЗУ 7:00 - 1:00)`
     : `${head}\nВРЕМЯ СМЕНЫ? ПРИМЕР: 7:00 - 3:00 ИЛИ 8`;
   if (st === "earned") return `${head} · ${gnum(w.hours)} Ч\nСКОЛЬКО ЗАРАБОТАЛ (СТАВКА)? НАПИШИ СУММУ` + (p.rate ? ` (+ = ${p.rate}₽)` : "");
   return `${head} · ${gnum(w.hours)} Ч · ${fmtRub(w.earned)}\nБОНУСЫ КРОМЕ SHOP BOT? (1500 ИЛИ 500+1000)\nSHOP BOT ПОДТЯНЕТСЯ САМ`;
@@ -114,10 +114,13 @@ function applyWorkText(w, text) {                // ввод часов / сум
   const st = workStage(w), p = wplace(w), nm = `${ddmm(w.day)} ${p.name}`;
   if (st === "hours") {
     const ts = w.day >= today() ? parseStart(text) : null;
-    if (ts) { w.t_from = ts; w.t_to = null; w.hours = null; kvPut("alarm:" + w.id, ""); save(); return `${nm}: С ${ts} · КОНЕЦ СПРОШУ ВЕЧЕРОМ`; }
+    if (ts) {
+      w.t_from = ts; w.hours = 8; w.t_to = m2hm((hm2m(ts) + 480) % 1440); calcEarn(w); kvPut("alarm:" + w.id, ""); save(); workPlanSyncAll();
+      return `${nm}: С ${ts} · В 📅 СМЕНА 8 Ч, ДОЛЬШЕ — ТЯНИ В КАЛЕНДАРЕ`;
+    }
     const rg = parseRange(text), h = rg ? ceilH(rg[2]) : parseHours(text);
     if (h == null) return null;
-    w.hours = h; calcEarn(w); w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; save();
+    w.hours = h; calcEarn(w); w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; save(); workPlanSyncAll();
     return `${nm}: ${gnum(h)} Ч${rg ? ` (${rg[0]}–${rg[1]})` : ""}${w.earned != null ? " = " + fmtRub(w.earned) : ""}`;
   }
   if (st === "earned") {
@@ -279,8 +282,8 @@ function toast(text) { const w = sheetOf(b => `<div class="stt">${esc(text)}</di
 function shiftChain(wid) {
   const w = workRow(wid); if (!w) return;
   const st = workStage(w), p = wplace(w);
-  if (st === "done" || (st === "hours" && w.t_from && w.day >= today())) {   // будущая смена: старт записан, конец спросим позже
-    if (st === "hours") { const a = wakeAlarm(w.day, w.t_from); if (a) alarmSheet(w, a); }
+  if (st === "done" || (st !== "hours" && !shiftOver(w))) {   // смена ещё идёт или впереди: бонусы спрошу, когда закончится
+    if (st !== "done" && w.day >= today()) { const a = wakeAlarm(w.day, w.t_from); if (a) alarmSheet(w, a); }
     return refresh();
   }
   const extra = [];
@@ -340,19 +343,10 @@ function workTick() {
     if (!w.t_from || w.day < today()) continue;                             // будильник за 2 ч до старта
     if (!kvGet("alarm:" + w.id)) { const a = wakeAlarm(w.day, w.t_from); kvPut("alarm:" + w.id, "1"); if (a) { alarmSheet(w, a); return; } }
   }
-  for (const dd of [today(), addDays(today(), -1)]) {
-    for (const w of T("work_days").filter(x => x.day === dd)) {
-      if (w.hours != null || kvGet("endok:" + w.id)) continue;
-      const slots = [new Date(dd + "T21:30:00")].concat([...Array(8).keys()].map(h => new Date(addDays(dd, 1) + "T" + pad(h) + ":00:00")));
-      const dueS = slots.filter(x => x <= n && n - x < 90 * 60000), slot = dueS[dueS.length - 1];
-      if (!slot || kvGet("shiftq:" + w.id) === slot.toISOString()) continue;
-      if (w.t_from) {
-        let st = new Date(dd + "T" + w.t_from + ":00"); if (w.t_from < "06:00") st = new Date(st.getTime() + 864e5);
-        if (slot < new Date(st.getTime() + 3 * 3600e3)) continue;
-      }
-      kvPut("shiftq:" + w.id, slot.toISOString());
-      endAsk(w); return;
-    }
+  for (const w of T("work_days")) {                                          // смена закончилась (по 📅) → бонусы кроме shop bot
+    if (w.tips != null || w.src || kvGet("tipsq:" + w.id)) continue;
+    const end = shiftEnd(w); if (!end || end > n || n - end > 36 * 3600e3) continue;
+    kvPut("tipsq:" + w.id, "1"); shiftChain(w.id); return;
   }
 }
 function endAsk(w) {
@@ -532,39 +526,57 @@ function wRmenu() {
 function wRep() { W(`<div class="pre">${esc(reportText(wv.ym))}</div><div class="r2">${B("◀", () => wgo("rep", {ym: ymAdd(wv.ym, -1)}))}${B("▶", () => wgo("rep", {ym: ymAdd(wv.ym, 1)}))}${B("🗓 ГОД", () => wgo("year", {yy: wv.ym.slice(0, 4)}))}</div>` + B("⬅", () => wgo("rmenu"))); }
 function wYear() { W(`<div class="pre">${esc(yearText(wv.yy))}</div>` + B("⬅", () => wgo("rmenu", {yy: wv.yy}))); }
 
-// ---------------------------------------------------------------- смена в 📅: дорога 1 ч туда, смена (минимум 8 ч), дорога 1 ч обратно
-function addSpan(day, from, dur, base) {
-  while (dur > 0) {
-    while (from < 0) { day = addDays(day, -1); from += 1440; }
-    while (from >= 1440) { day = addDays(day, 1); from -= 1440; }
-    const seg = Math.min(dur, 1440 - from);
-    T("plan").push(Object.assign({id: nextId("plan"), day, from, to: from + seg, nopomo: true}, base));
-    dur -= seg; from += seg;
-  }
+// ---------------------------------------------------------------- смена в 📅 (оранжевая), календарь — главный по времени
+// Смена = одно дело в плане (role "shift", по умолчанию 8 ч, может идти за полночь) + дорога 1 ч туда и 1 ч обратно.
+// Правишь время в 📅 → часы и сумма в 🤵‍♂️ пересчитываются сами. Правишь в 🤵‍♂️ → двигается дело в 📅.
+const shiftEv = w => T("plan").find(e => e.work === w.id && e.role === "shift");
+const shiftTitle = w => wplace(w).name + (w.note ? " — " + w.note : "");
+const evSig = e => [e.day, e.from, e.to].join("|");
+const wSig = w => [w.day, w.t_from, w.t_to, w.hours, w.place_id, w.note].join("|");
+function shiftEnd(w) {
+  const e = shiftEv(w); if (!e) return null;
+  return new Date(dObj(e.day).getTime() + e.to * 60000);
+}
+const shiftOver = w => { const t = shiftEnd(w); return t ? t <= new Date() : w.day < today(); };
+function roadsSync(w, e) {
+  S.db.plan = T("plan").filter(x => !(x.work === w.id && x.role === "road"));
+  if (!e) return;
+  const road = (from, title) => {
+    let day = e.day; while (from < 0) { day = addDays(day, -1); from += 1440; } while (from >= 1440) { day = addDays(day, 1); from -= 1440; }
+    T("plan").push({id: nextId("plan"), day, from, to: from + 60, title, color: PCOL[6], nopomo: true, work: w.id, role: "road"});
+  };
+  road(e.from - 60, "🚇 НА РАБОТУ"); road(e.to, "🚇 ДОМОЙ");
 }
 function workPlanSync(w) {
-  S.db.plan = T("plan").filter(e => e.work !== w.id);
-  if (w.t_from) {
-    const st = hm2m(w.t_from), p = wplace(w);
-    let dur = w.hours != null ? w.hours * 60 : 0;
-    if (w.t_to) { const en = hm2m(w.t_to); dur = Math.max(dur, ((en - st) % 1440 + 1440) % 1440); }
-    dur = Math.max(480, dur);
-    addSpan(w.day, st - 60, 60, {title: "🚇 НА РАБОТУ", color: PCOL[6], work: w.id});
-    addSpan(w.day, st, dur, {title: "🤵‍♂️ " + p.name, color: PCOL[1], work: w.id});
-    addSpan(w.day, st + dur, 60, {title: "🚇 ДОМОЙ", color: PCOL[6], work: w.id});
-  }
-  w._ps = [w.t_from, w.t_to, w.hours, w.place_id].join("|");
+  let e = shiftEv(w);
+  if (e && e._sig !== evSig(e)) {                // время поменяли в календаре → в смену
+    w.day = e.day; w.t_from = m2hm(e.from); w.t_to = m2hm(e.to % 1440); w.hours = ceilH((e.to - e.from) / 60); calcEarn(w);
+  } else if (w._ps !== wSig(w)) {               // поменяли в 🤵‍♂️ → в календарь
+    if (!w.t_from) { S.db.plan = T("plan").filter(x => x.work !== w.id); e = null; }
+    else {
+      const f = hm2m(w.t_from);
+      let dur = w.t_to ? ((hm2m(w.t_to) - f) % 1440 + 1440) % 1440 : 0;
+      if (!dur) dur = Math.max(480, (w.hours || 0) * 60);
+      if (!e) { e = {id: nextId("plan"), nopomo: true, work: w.id, role: "shift", color: PCOL[1]}; T("plan").push(e); }
+      Object.assign(e, {day: w.day, from: f, to: f + dur});
+      if (w.hours == null || !w.t_to) { w.t_to = m2hm((f + dur) % 1440); w.hours = ceilH(dur / 60); calcEarn(w); }
+    }
+  } else return false;
+  if (e) { e.title = shiftTitle(w); e.color = PCOL[1]; e.nopomo = true; e._sig = evSig(e); }
+  roadsSync(w, e);
+  w._ps = wSig(w);
+  return true;
 }
 function workPlanSyncAll() {
   let ch = false;
   const ids = new Set(T("work_days").map(w => w.id));
-  if (T("plan").some(e => e.work && !ids.has(e.work))) { S.db.plan = T("plan").filter(e => !e.work || ids.has(e.work)); ch = true; }
+  if (T("plan").some(e => e.work && (!ids.has(e.work) || !e.role))) {        // старые куски смен и удалённые смены
+    const old = new Set(T("plan").filter(e => e.work && !e.role).map(e => e.work));
+    S.db.plan = T("plan").filter(e => e.work ? ids.has(e.work) && e.role : true);
+    T("work_days").forEach(w => { if (old.has(w.id)) w._ps = null; }); ch = true;
+  }
   const from = addDays(today(), -3);
-  T("work_days").forEach(w => {
-    if (w.day < from) return;
-    const sig = [w.t_from, w.t_to, w.hours, w.place_id].join("|");
-    if (w._ps !== sig) { workPlanSync(w); ch = true; }
-  });
+  T("work_days").forEach(w => { if (w.day >= from || shiftEv(w)) ch = workPlanSync(w) || ch; });
   T("work_places").forEach(p => { if (/mcg|манифик/i.test(p.name || "") && (p.unit !== "hour" || !p.rate)) { p.unit = "hour"; p.rate = p.rate || 500; ch = true; } });
   if (ch) save();
 }

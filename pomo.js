@@ -30,7 +30,7 @@ function pomoSlots(day) {
   const ds = pomoDayStart(day); if (ds == null) return [];
   const c = pcfg(day), out = [];
   for (let s = Math.ceil((ds + 60) / c.len) * c.len; s + c.len <= 1440; s += c.len)
-    if (!pomoEvents(day, s).some(e => e.nopomo)) out.push(s);
+    { const ev = pomoEvents(day, s); if (!ev.some(e => e.nopomo) || ev.some(e => !e.nopomo)) out.push(s); }   // дело поверх смены — помидорка есть
   return out;
 }
 function pomoEnsure() {                           // закончившиеся слоты получают запись; старые без ответа закрываются ❌

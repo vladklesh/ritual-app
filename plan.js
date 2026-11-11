@@ -11,7 +11,11 @@ const m2hm = m => pad(Math.floor(m / 60) % 24) + ":" + pad(m % 60);
 const dObj = day => new Date(day + "T00:00:00");
 const addDays = (day, n) => { const d = dObj(day); d.setDate(d.getDate() + n); return isoDay(d); };
 const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
-const planOf = day => T("plan").filter(e => e.day === day);
+const planOf = day => {                           // дело после полуночи (to > 1440) продолжается в следующем дне
+  const prev = addDays(day, -1);
+  return T("plan").filter(e => e.day === day).concat(T("plan").filter(e => e.day === prev && e.to > 1440)
+    .map(e => Object.assign({}, e, {from: 0, to: e.to - 1440, spill: true})));
+};
 
 function planDays() {
   if (pv === "1") return [pday];
@@ -53,7 +57,7 @@ function renderPlan() {
     const cols = days.map(d => {
       const evs = layout(planOf(d)).map(p => {
         const e = p.e, h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${p.l / p.n * 100}% + 1px);width:calc(${100 / p.n}% - 2px);background:${e.color};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
+        return `<div class="ev${e.spill ? " sp" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${p.l / p.n * 100}% + 1px);width:calc(${100 / p.n}% - 2px);background:${e.color};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
       }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
@@ -79,12 +83,11 @@ function renderPlan() {
     pg.onscroll = () => { pScroll = pg.scrollTop; };
     bindDrag(pg);
     pg.onclick = e => {
-      const ev = e.target.closest(".ev");
-      if (ev) return openEv(+ev.dataset.id);
-      const col = e.target.closest(".pcol");
+      const ev = e.target.closest(".ev"), col = e.target.closest(".pcol");
       if (!col) return;
-      const y = e.clientY - col.getBoundingClientRect().top;
-      openEv(null, col.dataset.d, Math.max(0, Math.min(1410, Math.floor(y / PHH * 2) * 30)));
+      const y = e.clientY - col.getBoundingClientRect().top, m = Math.max(0, Math.min(1410, Math.floor(y / PHH * 2) * 30));
+      if (ev) return openEv(+ev.dataset.id, col.dataset.d, m);
+      openEv(null, col.dataset.d, m);
     };
   }
 }
@@ -119,10 +122,34 @@ function repEnd(rid, day) {                             // серия закан
 }
 
 // ---------------------------------------------------------------- карточка дела
+function openShiftEv(e0, day, at) {             // смена (и дорога): время правится здесь или перетаскиванием; можно положить дело поверх
+  const e = T("plan").find(x => x.work === e0.work && x.role === "shift") || e0, w = workRow(e.work);
+  const sh = document.createElement("div"); sh.className = "sheet";
+  sh.innerHTML = `<div><div class="stt">🤵‍♂️ СМЕНА</div>
+    <input id="st" value="${esc(e.title)}">
+    <input type="date" id="sd" value="${e.day}" style="margin-top:8px">
+    <div class="r2"><input type="time" id="sf" value="${m2hm(e.from)}"><input type="time" id="stt" value="${m2hm(e.to % 1440)}"></div>
+    <div class="dim">КОНЕЦ РАНЬШЕ НАЧАЛА = СЛЕДУЮЩИЙ ДЕНЬ · ${gnum(Math.ceil((e.to - e.from) / 60 - 1e-9))} Ч</div>
+    <button class="btn" id="sadd">➕ ДЕЛО ПОВЕРХ СМЕНЫ</button><button class="btn" id="sopen">💵 СУММА, БОНУСЫ, ЗП</button>
+    <div class="acts"><button id="sdel">🗑</button><button id="scl">✕</button><button id="sok">✅</button></div></div>`;
+  document.body.appendChild(sh);
+  const g = i => sh.querySelector("#" + i);
+  sh.onclick = ev => { if (ev.target === sh) sh.remove(); };
+  g("scl").onclick = () => sh.remove();
+  g("sadd").onclick = () => { sh.remove(); openEv(null, day || e.day, at != null ? at : e.from); };
+  g("sopen").onclick = () => { sh.remove(); tab = screen = "work"; wv = {v: "shift", id: e.work}; render(); };
+  g("sdel").onclick = () => { if (!confirm("УДАЛИТЬ СМЕНУ?")) return; S.db.work_days = T("work_days").filter(x => x.id !== e.work); S.db.plan = T("plan").filter(x => x.work !== e.work); save(); sh.remove(); renderPlan(); };
+  g("sok").onclick = () => {
+    const f = hm2m(g("sf").value), t0 = hm2m(g("stt").value); if (f == null || t0 == null) return;
+    e.title = g("st").value.trim() || e.title; e.day = g("sd").value || e.day; e.from = f; e.to = t0 > f ? t0 : t0 + 1440;
+    if (w) { const p = wplace(w), nt = e.title.replace(new RegExp("^" + p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[—-]\\s*", "i"), ""); if (nt !== e.title) w.note = nt; }
+    save(); sh.remove(); renderPlan();
+  };
+}
 function openEv(id, day, from) {
   const e = id ? T("plan").find(x => x.id === id) : {day, from, to: Math.min(1440, from + 60), title: "", color: PCOL[0], nopomo: false};
   if (!e) return;
-  if (e.work) { const wid = e.work; tab = screen = "work"; wv = {v: "shift", id: wid}; render(); return; }
+  if (e.work) return openShiftEv(e, day, from);
   const r0 = e.rep ? T("plan_rep").find(x => x.id === e.rep) : null;
   const w = document.createElement("div"); w.className = "sheet"; w.id = "evs";
   w.innerHTML = `<div>
@@ -199,8 +226,15 @@ function bindDrag(pg) {
   };
   const place = () => {
     const cs = [...pg.querySelectorAll(".pcol")], r0 = cs[0].getBoundingClientRect(), dur = d.e.to - d.e.from;
+    if (d.rs) {                                       // тянешь нижний край — меняешь конец
+      const t = Math.max(d.e.from + 15, Math.min(1440, Math.round((d.y - r0.top) / PHH * 4) * 15));
+      d.p = {m: d.e.from, to: t, col: d.el.parentNode};
+      d.el.style.height = (t - d.e.from) / 60 * PHH + "px";
+      d.el.innerHTML = esc(d.e.title) + `<br><small>${m2hm(d.e.from)}–${m2hm(t)}</small>`;
+      return;
+    }
     const ci = Math.max(0, Math.min(cs.length - 1, Math.floor((d.x - r0.left) / r0.width)));
-    const m = Math.max(0, Math.min(1440 - dur, Math.round((d.y - d.off - r0.top) / PHH * 4) * 15));
+    const m = Math.max(0, Math.min(d.e.work ? 1425 : 1440 - dur, Math.round((d.y - d.off - r0.top) / PHH * 4) * 15));
     d.p = {m, col: cs[ci]};
     d.el.style.left = "1px"; d.el.style.width = "calc(100% - 2px)"; d.el.style.top = m / 60 * PHH + "px";
     if (d.el.parentNode !== d.p.col) d.p.col.appendChild(d.el);
@@ -212,8 +246,10 @@ function bindDrag(pg) {
     if (!el || ev.touches.length !== 1 || d) return;
     sx = ev.touches[0].clientX; sy = ev.touches[0].clientY;
     tm = setTimeout(() => {
-      const e = T("plan").find(x => x.id === +el.dataset.id); if (!e || e.work) return;
-      d = {e, el, x: sx, y: sy, off: sy - el.getBoundingClientRect().top};
+      const e = T("plan").find(x => x.id === +el.dataset.id);
+      if (!e || el.classList.contains("sp") || (e.work && e.role !== "shift")) return;
+      const rc = el.getBoundingClientRect();
+      d = {e, el, x: sx, y: sy, off: sy - rc.top, rs: rc.bottom - sy < 22 && !(e.to > 1440)};
       el.style.zIndex = 5; el.style.opacity = ".9"; el.style.outline = "2px solid #fff";
       try { navigator.vibrate && navigator.vibrate(15); } catch (x) {}
       place();
@@ -234,7 +270,11 @@ function bindDrag(pg) {
     if (!d) return;
     ev.preventDefault();
     const x = d; d = null;
-    if (ok) { const dur = x.e.to - x.e.from; x.e.day = x.p.col.dataset.d; x.e.from = x.p.m; x.e.to = x.p.m + dur; save(); }
+    if (ok && x.p) {
+      if (x.rs) x.e.to = x.p.to;
+      else { const dur = x.e.to - x.e.from; x.e.day = x.p.col.dataset.d; x.e.from = x.p.m; x.e.to = x.p.m + dur; }
+      save();
+    }
     renderPlan();
   };
   pg.addEventListener("touchend", end(true), {passive: false});
