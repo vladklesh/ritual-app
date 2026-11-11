@@ -71,6 +71,7 @@ const wplace = w => getPlace(w.place_id) || {name: "?", rate: 0, unit: "shift"};
 const due = w => (w.earned || 0) + (w.exp || 0);
 const isHourly = p => !!p && (p.unit === "hour" || /mcg|манифик/i.test(p.name || ""));
 const ceilH = h => Math.ceil(h - 1e-9);                // часы смены округляются вверх
+const defH = w => isMCG(wplace(w)) ? 10 : 8;          // смена по умолчанию в 📅: MCG 10 ч, остальные 8 ч
 const isMCG = p => !!p && /mcg|манифик/i.test(p.name || "");
 function calcEarn(w) {                             // MCG: до 10 ч — минималка 5000₽, дальше 500₽/ч
   const p = wplace(w); if (!isHourly(p) || w.hours == null) return;
@@ -110,7 +111,7 @@ function workPending() {
 function workPrompt(w) {
   const p = wplace(w), head = `РАБОТА ${ddmm(w.day)} · ${p.name.toUpperCase()}`, st = workStage(w);
   if (st === "hours") return w.day >= today()
-    ? `${head}\nСО СКОЛЬКО НАЧИНАЕШЬ? ПРИМЕР: 7 ИЛИ 7:30\nВ 📅 ПОСТАВЛЮ 8 Ч, ДОЛЬШЕ — ТЯНИ В КАЛЕНДАРЕ (ИЛИ СРАЗУ 7:00 - 1:00)`
+    ? `${head}\nСО СКОЛЬКО НАЧИНАЕШЬ? ПРИМЕР: 7 ИЛИ 7:30\nВ 📅 ПОСТАВЛЮ ${defH(w)} Ч, ДОЛЬШЕ — ТЯНИ В КАЛЕНДАРЕ (ИЛИ СРАЗУ 7:00 - 1:00)`
     : `${head}\nВРЕМЯ СМЕНЫ? ПРИМЕР: 7:00 - 3:00 ИЛИ 8`;
   if (st === "earned") return `${head} · ${gnum(w.hours)} Ч\nСКОЛЬКО ЗАРАБОТАЛ (СТАВКА)? НАПИШИ СУММУ` + (p.rate ? ` (+ = ${p.rate}₽)` : "");
   return `${head} · ${gnum(w.hours)} Ч · ${fmtRub(w.earned)}\nБОНУСЫ КРОМЕ SHOP BOT? (1500 ИЛИ 500+1000)\nSHOP BOT ПОДТЯНЕТСЯ САМ`;
@@ -120,8 +121,8 @@ function applyWorkText(w, text) {                // ввод часов / сум
   if (st === "hours") {
     const ts = w.day >= today() ? parseStart(text) : null;
     if (ts) {
-      w.t_from = ts; w.hours = 8; w.t_to = m2hm((hm2m(ts) + 480) % 1440); calcEarn(w); kvPut("alarm:" + w.id, ""); save(); workPlanSyncAll();
-      return `${nm}: С ${ts} · В 📅 СМЕНА 8 Ч, ДОЛЬШЕ — ТЯНИ В КАЛЕНДАРЕ`;
+      w.t_from = ts; w.hours = defH(w); w.t_to = m2hm((hm2m(ts) + defH(w) * 60) % 1440); calcEarn(w); kvPut("alarm:" + w.id, ""); save(); workPlanSyncAll();
+      return `${nm}: С ${ts} · В 📅 СМЕНА ${defH(w)} Ч, ДОЛЬШЕ — ТЯНИ В КАЛЕНДАРЕ`;
     }
     const rg = parseRange(text), h = rg ? ceilH(rg[2]) : parseHours(text);
     if (h == null) return null;
@@ -551,7 +552,7 @@ function workPlanSync(w) {
     else {
       const f = hm2m(w.t_from);
       let dur = w.t_to ? ((hm2m(w.t_to) - f) % 1440 + 1440) % 1440 : 0;
-      if (!dur) dur = Math.max(480, (w.hours || 0) * 60);
+      if (!dur) dur = Math.max(defH(w) * 60, (w.hours || 0) * 60);
       if (!e) { e = {id: nextId("plan"), nopomo: true, work: w.id, role: "shift", color: PCOL[1]}; T("plan").push(e); }
       Object.assign(e, {day: w.day, from: f, to: f + dur});
       if (w.hours == null || !w.t_to) { w.t_to = m2hm((f + dur) % 1440); w.hours = ceilH(dur / 60); calcEarn(w); }
