@@ -1,11 +1,11 @@
 "use strict";
-// ================================================================== 🫴 ДОЛГИ, ВКЛАДЫ, «ЗП НЕ ЗАБРАЛ», СОН
+// ================================================================== 🫴🏻 МНЕ ДОЛЖНЫ (с % годовых), «ЗП НЕ ЗАБРАЛ», СОН
 const ZP_TITLES = {zp: "📥 ЗП НЕ ЗАБРАЛ", maslov: "👤 МАСЛОВ ДИМА ЗП"};
 const ymCur = () => today().slice(0, 7);
 const ymfmt = ym => ym.slice(5, 7) + "." + ym.slice(2, 4);
 const depNames = () => Object.fromEntries(T("debtors").filter(d => d.active !== 0).map(d => [d.id, d.name]));
 
-function depSeries(ymTo) {                       // баланс = прошлый × (1 + ставка/12) + вклады − возвраты
+function depSeries(ymTo) {                       // баланс = прошлый × (1 + ставка/12) + дал в долг − вернули
   const adj = {};
   T("dep_adj").filter(r => r.ym <= ymTo).forEach(r => { const k = r.debtor_id + "|" + r.ym; adj[k] = (adj[k] || 0) + r.amount; });
   const keys = Object.keys(adj); if (!keys.length) return [];
@@ -28,7 +28,7 @@ function depPay(did, amount, day) {              // возврат до 10 чи�
 }
 function depAdd(did, amount, day) {
   const ym = day.slice(0, 7);
-  T("dep_adj").push({id: nextId("dep_adj"), debtor_id: did, ym, amount, day, note: "вклад"}); save(); return ym;
+  T("dep_adj").push({id: nextId("dep_adj"), debtor_id: did, ym, amount, day, note: "дал"}); save(); return ym;
 }
 function parseAmountDate(text) {
   let t = String(text || "").trim(), day = today();
@@ -41,7 +41,7 @@ const zpRows = g => T("unpaid_items").filter(r => r.grp === g && !r.paid_on).sor
 
 function wDebts() {
   const [ym, rate, bal] = depNow(), names = depNames();
-  const L = [`🫴 МНЕ ДОЛЖНЫ · ${ymfmt(ym)} · ${gnum(rate)}% ГОДОВЫХ`]; let total = 0;
+  const L = [`🫴🏻 МНЕ ДОЛЖНЫ · ${ymfmt(ym)} · ${gnum(rate)}% ГОДОВЫХ`]; let total = 0;
   Object.entries(bal).sort((a, b) => b[1] - a[1]).forEach(([d, b]) => { if (b >= 1) { L.push(`• ${names[d] || "?"}: ${fmtN(b)}₽`); total += b; } });
   L.push(`ИТОГО: ${fmtN(total)}₽ · ДОХОД ЗА МЕСЯЦ: ${fmtN(total * rate / 1200)}₽`);
   const pend = T("dep_adj").filter(r => r.ym > ym).sort((a, b) => a.ym.localeCompare(b.ym));
@@ -50,18 +50,18 @@ function wDebts() {
   ["zp", "maslov"].forEach(g => { const z = zpRows(g); if (z.length) L.push(`${ZP_TITLES[g]}: ${fmtN(z.reduce((s, r) => s + r.amount, 0))}₽ (${z.length} СМ.)`); });
   const pickDebtor = (title, fn) => choose(title, Object.entries(names).map(([d, n]) => [`${n} · ${fmtN(bal[d] || 0)}₽`, () => { closeTop(); fn(+d); }]));
   W(`<div class="pre">${esc(L.join("\n"))}</div>
-    <div class="r2">${B("💵 ОТДАЛИ", () => pickDebtor("КТО ОТДАЛ?", d => askText("СКОЛЬКО ОТДАЛ? ПРИМЕР: 20000 ИЛИ 20000 05.11\nДО 10 ЧИСЛА — СПИШЕТСЯ В ЭТОМ МЕСЯЦЕ, ПОСЛЕ — В СЛЕДУЮЩЕМ", t => {
+    <div class="r2">${B("💵 ВЕРНУЛИ", () => pickDebtor("КТО ВЕРНУЛ?", d => askText("СКОЛЬКО ВЕРНУЛ? ПРИМЕР: 20000 ИЛИ 20000 05.11\nДО 10 ЧИСЛА — СПИШЕТСЯ В ЭТОМ МЕСЯЦЕ, ПОСЛЕ — В СЛЕДУЮЩЕМ", t => {
       const r = parseAmountDate(t); if (!r) { toast("НЕ ПОНЯЛ. ПРИМЕР: 20000 ИЛИ 20000 05.11"); return false; }
-      const m = depPay(d, r[0], r[1]); renderWork(); toast(`${names[d]}: ОТДАЛ ${fmtN(r[0])}₽. ЗАЧТЁТСЯ В ${ymfmt(m)}`); return true; })))}
-    ${B("➕ ВКЛАД", () => pickDebtor("КОМУ ДОБАВИТЬ ВКЛАД?", d => askText("СКОЛЬКО ДОБАВИТЬ? ПРИМЕР: 100000 ИЛИ 100000 05.11", t => {
+      const m = depPay(d, r[0], r[1]); renderWork(); toast(`${names[d]}: ВЕРНУЛ ${fmtN(r[0])}₽. ЗАЧТЁТСЯ В ${ymfmt(m)}`); return true; })))}
+    ${B("➕ ДАЛ В ДОЛГ", () => pickDebtor("КОМУ ДАЛ В ДОЛГ?", d => askText("СКОЛЬКО ДАЛ? ПРИМЕР: 100000 ИЛИ 100000 05.11", t => {
       const r = parseAmountDate(t); if (!r) { toast("НЕ ПОНЯЛ"); return false; }
-      const m = depAdd(d, r[0], r[1]); renderWork(); toast(`${names[d]}: ВКЛАД +${fmtN(r[0])}₽ В ${ymfmt(m)}`); return true; })))}</div>
-    <div class="r2">${B("% СТАВКА", () => askText(`ПРОЦЕНТ ГОДОВЫХ НА ${ymfmt(ymCur())} И ДАЛЕЕ? ПРИМЕР: 13,5`, t => {
+      const m = depAdd(d, r[0], r[1]); renderWork(); toast(`${names[d]}: ДОЛГ +${fmtN(r[0])}₽ С ${ymfmt(m)}`); return true; })))}</div>
+    <div class="r2">${B("% СТАВКА", () => askText(`% ГОДОВЫХ, КОТОРЫЙ КАПАЕТ НА ДОЛГ, С ${ymfmt(ymCur())}? ПРИМЕР: 13,5`, t => {
       const v = parseFloat(String(t).replace(",", ".")); if (!(v >= 0)) { toast("НЕ ПОНЯЛ"); return false; }
       const r = T("dep_rate").find(x => x.ym === ymCur()); if (r) r.rate = v; else T("dep_rate").push({ym: ymCur(), rate: v}); save(); renderWork(); return true; }))}
     ${B("🧾 Я ДОЛЖЕН", () => wgo("owe"))}</div>
     <div class="r2">${B(ZP_TITLES.zp, () => wgo("zp", {g: "zp", sel: []}))}${B(ZP_TITLES.maslov, () => wgo("zp", {g: "maslov", sel: []}))}</div>
-    ${B("📜 ИСТОРИЯ", () => wgo("dhist"))}${B("⬅", () => wgo("main"))}`);
+    ${B("📜 ИСТОРИЯ", () => wgo("dhist"))}${B("⬅", () => { tab = screen = "set"; render(); })}`);
 }
 function wOwe() {
   const items = T("owe_items"), L = ["🧾 Я ДОЛЖЕН ПАЦАНАМ (ОТДАМ, КОГДА РУС ПОЛНОСТЬЮ ЗАКРОЕТ ДОЛГ)"];

@@ -33,6 +33,7 @@ function layout(evs) {                            // раскладка пере
 }
 
 function renderPlan() {
+  planRepFill(); if (typeof workPlanSyncAll === "function") workPlanSyncAll();
   const month = pv === "m", days = month ? [] : planDays(), d0 = dObj(month ? pday : days[0]);
   const head = `<div class="phead"><button id="pp">‹</button><div class="pt">${MON[d0.getMonth()]} ${d0.getFullYear()}</div><button id="pt0">●</button><button id="pn">›</button></div>
     <div class="pviews">${[["1", "1"], ["3", "3"], ["7", "7"], ["m", "М"]].map(v => `<button data-v="${v[0]}" class="${pv === v[0] ? "on" : ""}">${v[1]}</button>`).join("")}</div>`;
@@ -52,7 +53,7 @@ function renderPlan() {
     const cols = days.map(d => {
       const evs = layout(planOf(d)).map(p => {
         const e = p.e, h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${p.l / p.n * 100}% + 1px);width:calc(${100 / p.n}% - 2px);background:${e.color};${big ? "font-size:14px" : ""}">${e.nopomo ? "⛔ " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
+        return `<div class="ev" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${p.l / p.n * 100}% + 1px);width:calc(${100 / p.n}% - 2px);background:${e.color};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(e.title)}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
       }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
@@ -88,45 +89,104 @@ function renderPlan() {
   }
 }
 
+// ---------------------------------------------------------------- повторы: правило в plan_rep, дела создаются на 60 дней вперёд
+const REPS = [["", "НЕТ"], ["d", "КАЖДЫЙ ДЕНЬ"], ["wd", "БУДНИ"], ["w", "РАЗ В НЕДЕЛЮ"]];
+const repHits = (r, day) => r.rule === "d" || (r.rule === "wd" && dObj(day).getDay() % 6 !== 0) || (r.rule === "w" && dObj(day).getDay() === r.wday);
+function planRepFill() {
+  const end = addDays(today(), 60); let ch = false;
+  T("plan_rep").forEach(r => {
+    let d = r.upto ? addDays(r.upto, 1) : r.start;
+    const stop = r.until && r.until < end ? r.until : end;
+    for (; d <= stop; d = addDays(d, 1)) {
+      if (!repHits(r, d)) continue;
+      T("plan").push({id: nextId("plan"), day: d, from: r.from, to: r.to, title: r.title, color: r.color, nopomo: r.nopomo, rep: r.id}); ch = true;
+    }
+    if (r.upto !== stop) { r.upto = stop; ch = true; }
+  });
+  if (ch) save();
+}
+function repNew(e, rule) {
+  const id = nextId("plan_rep");
+  T("plan_rep").push({id, rule, wday: dObj(e.day).getDay(), start: e.day, until: null, upto: null, from: e.from, to: e.to, title: e.title, color: e.color, nopomo: e.nopomo});
+  S.db.plan = T("plan").filter(x => x !== e);           // первое дело создаст правило
+  planRepFill();
+}
+function repEnd(rid, day) {                             // серия заканчивается перед day, будущие дела удаляются
+  const r = T("plan_rep").find(x => x.id === rid); if (!r) return;
+  r.until = addDays(day, -1);
+  S.db.plan = T("plan").filter(x => !(x.rep === rid && x.day >= day));
+  if (r.until < r.start) S.db.plan_rep = T("plan_rep").filter(x => x !== r);
+}
+
 // ---------------------------------------------------------------- карточка дела
 function openEv(id, day, from) {
-  const e = id ? T("plan").find(x => x.id === id) : {day, from, to: Math.min(1440, from + 30), title: "", color: PCOL[0], nopomo: false};
+  const e = id ? T("plan").find(x => x.id === id) : {day, from, to: Math.min(1440, from + 60), title: "", color: PCOL[0], nopomo: false};
   if (!e) return;
+  if (e.work) { const wid = e.work; tab = screen = "work"; wv = {v: "shift", id: wid}; render(); return; }
+  const r0 = e.rep ? T("plan_rep").find(x => x.id === e.rep) : null;
   const w = document.createElement("div"); w.className = "sheet"; w.id = "evs";
   w.innerHTML = `<div>
     <input id="et" placeholder="ЧТО ДЕЛАЮ" value="${esc(e.title)}">
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
     <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}"><input type="time" id="eto" value="${e.to >= 1440 ? "23:59" : m2hm(e.to)}"></div>
-    <div class="chips">${[25, 30, 60, 120].map(n => `<button data-q="${n}">${n < 60 ? n + "М" : n / 60 + "Ч"}</button>`).join("")}</div>
+    <div class="chips">${[50, 60, 120, 480].map(n => `<button data-q="${n}">${n < 60 ? n + "М" : n / 60 + "Ч"}</button>`).join("")}</div>
     <div class="chips" id="ecol">${PCOL.map(c => `<button data-c="${c}" style="background:${c}"></button>`).join("")}</div>
+    <div class="chips" id="erep">${REPS.map(x => `<button data-r="${x[0]}">${x[1]}</button>`).join("")}</div>
     <button class="btn" id="enp" style="margin:8px 0 0"></button>
     <div class="acts">${id ? '<button id="edel">🗑</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
   document.body.appendChild(w);
-  const g = i => document.getElementById(i);
-  let color = e.color, np = !!e.nopomo;
+  const g = i => w.querySelector("#" + i);
+  let color = e.color, np = !!e.nopomo, rule = r0 ? r0.rule : "";
   const paint = () => {
     g("enp").textContent = np ? "⛔ БЕЗ ПОМИДОРОК (РАБОТА, СОН, ДОРОГА)" : "🍅 ПОМИДОРКИ ЕСТЬ";
     w.querySelectorAll("[data-c]").forEach(b => b.textContent = b.dataset.c === color ? "●" : "");
+    w.querySelectorAll("[data-r]").forEach(b => { b.style.background = b.dataset.r === rule ? "#fff" : ""; b.style.color = b.dataset.r === rule ? "#000" : ""; });
   };
   paint();
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
   g("enp").onclick = () => { np = !np; paint(); };
   w.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { color = b.dataset.c; paint(); });
+  w.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rule = b.dataset.r; paint(); });
   w.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
     const f = hm2m(g("ef").value); if (f == null) return;
-    const t = Math.min(1439, f + +b.dataset.q); g("eto").value = m2hm(t);
+    g("eto").value = m2hm(Math.min(1439, f + +b.dataset.q));
   });
-  if (id) g("edel").onclick = () => { if (confirm("УДАЛИТЬ?")) { S.db.plan = T("plan").filter(x => x.id !== id); save(); w.remove(); renderPlan(); } };
+  const scope = (q, one, all) => {                       // для повторяющегося дела: только это или все следующие
+    const s = document.createElement("div"); s.className = "sheet";
+    s.innerHTML = `<div><div class="stt">${q}</div><button class="btn" id="s1">ТОЛЬКО ЭТО</button><button class="btn" id="s2">ЭТО И ВСЕ СЛЕДУЮЩИЕ</button></div>`;
+    document.body.appendChild(s);
+    s.querySelector("#s1").onclick = () => { s.remove(); one(); };
+    s.querySelector("#s2").onclick = () => { s.remove(); all(); };
+  };
+  const done = () => { save(); w.remove(); renderPlan(); };
+  if (id) g("edel").onclick = () => {
+    const one = () => { S.db.plan = T("plan").filter(x => x.id !== id); done(); };
+    if (r0) scope("УДАЛИТЬ ПОВТОРЯЮЩЕЕСЯ ДЕЛО", one, () => { repEnd(r0.id, e.day); done(); });
+    else if (confirm("УДАЛИТЬ?")) one();
+  };
   g("eok").onclick = () => {
     const title = g("et").value.trim();
     if (!title) { g("et").focus(); return; }
     const f = hm2m(g("ef").value); if (f == null) return;
     let t = hm2m(g("eto").value);
-    if (t === 0) t = 1440; else if (t == null || t <= f) t = Math.min(1440, f + 30);
-    e.title = title; e.from = f; e.to = t; e.color = color; e.nopomo = np; e.day = g("ed").value || e.day;
-    if (!id) { e.id = nextId("plan"); T("plan").push(e); }
-    pday = e.day; save(); w.remove(); renderPlan();
+    if (t === 0) t = 1440; else if (t == null || t <= f) t = Math.min(1440, f + 60);
+    const nd = g("ed").value || e.day;
+    const apply = x => { x.title = title; x.from = f; x.to = t; x.color = color; x.nopomo = np; };
+    pday = nd;
+    if (!r0) {                                           // обычное дело (или становится повторяющимся)
+      apply(e); e.day = nd;
+      if (!id) { e.id = nextId("plan"); T("plan").push(e); }
+      if (rule) repNew(e, rule);
+      return done();
+    }
+    const one = () => { apply(e); e.day = nd; e.rep = rule === r0.rule ? e.rep : undefined; if (rule !== r0.rule && rule) { repNew(e, rule); } done(); };
+    scope("ИЗМЕНИТЬ ПОВТОРЯЮЩЕЕСЯ ДЕЛО", one, () => {
+      repEnd(r0.id, e.day);
+      const x = {day: nd}; apply(x);
+      if (rule) repNew(x, rule); else { x.id = nextId("plan"); T("plan").push(x); }
+      done();
+    });
   };
 }
 
@@ -152,7 +212,7 @@ function bindDrag(pg) {
     if (!el || ev.touches.length !== 1 || d) return;
     sx = ev.touches[0].clientX; sy = ev.touches[0].clientY;
     tm = setTimeout(() => {
-      const e = T("plan").find(x => x.id === +el.dataset.id); if (!e) return;
+      const e = T("plan").find(x => x.id === +el.dataset.id); if (!e || e.work) return;
       d = {e, el, x: sx, y: sy, off: sy - el.getBoundingClientRect().top};
       el.style.zIndex = 5; el.style.opacity = ".9"; el.style.outline = "2px solid #fff";
       try { navigator.vibrate && navigator.vibrate(15); } catch (x) {}

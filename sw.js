@@ -1,6 +1,6 @@
 // Оффлайн-кэш: приложение открывается без интернета.
-const CACHE = "ritual-v13";
-const FILES = ["./", "./index.html", "./app.js?v=13", "./training.js?v=13", "./plan.js?v=13", "./pomo.js?v=13", "./work.js?v=13", "./debts.js?v=13", "./spheres.js?v=13", "./tasks.js?v=13", "./stats.js?v=13", "./main.js?v=13", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "ritual-v14";
+const FILES = ["./", "./index.html", "./app.js?v=14", "./training.js?v=14", "./plan.js?v=14", "./pomo.js?v=14", "./work.js?v=14", "./sync.js?v=14", "./debts.js?v=14", "./spheres.js?v=14", "./tasks.js?v=14", "./stats.js?v=14", "./main.js?v=14", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
@@ -9,7 +9,7 @@ self.addEventListener("activate", e => {
     .then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
+  if (e.request.method !== "GET" || new URL(e.request.url).origin !== self.location.origin) return;   // GitHub API не кэшируем
   e.respondWith(
     caches.match(e.request).then(hit => {
       const net = fetch(e.request).then(r => {

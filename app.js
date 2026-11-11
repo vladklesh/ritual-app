@@ -93,7 +93,18 @@ function setStatus(hid, status, day) {
   save();
 }
 function quitDays(h) { return h.since ? daysBetween(h.since, today()) : 0; }
-function dayItems(day) {
+function dayItems(day) {                     // утренние шаги свёрнуты в один пункт «УТРЕННИЙ БЛОК»
+  const raw = dayItemsRaw(day), out = [];
+  const steps = raw.filter(i => i.kind === "morning" && !SPECIAL.includes(i.name));
+  raw.forEach(i => {
+    if (i.kind !== "morning" || SPECIAL.includes(i.name)) return out.push(i);
+    if (i !== steps[0]) return;
+    const left = steps.filter(s => !s.status);
+    out.push({typ: "mb", id: "mb", kind: "morning", name: "УТРЕННИЙ БЛОК", at: "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
+  });
+  return out;
+}
+function dayItemsRaw(day) {
   day = day || today();
   const st = statusMap(day), wd = (new Date(day + "T12:00:00").getDay() + 6) % 7;
   const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day));
@@ -151,34 +162,28 @@ function answer(it, a) {
   return a === "n" && !SPECIAL.includes(it.name);   // true = спросить причину
 }
 function dropSkip(hid, day) { S.db.skip_log = T("skip_log").filter(r => !(r.habit_id === hid && r.day === day)); }
-const REASONS = [
-  ["t", "😴", "НЕТ СИЛ", "ТЕЛО НЕ ВОССТАНАВЛИВАЕТСЯ: поздние смены + физическая работа. Нужен ресурс, а не воля: в такие дни ⚡, полный объём — в выходной."],
-  ["v", "⏱", "НЕ УСПЕЛ", "ПРОБЛЕМА РАСПИСАНИЯ: привычка не привязана к якорю. Привяжи к тому, что и так делаешь, и дай ей время."],
-  ["s", "🌫", "НЕТ СМЫСЛА", "СВЯЗЬ С ЦЕЛЬЮ ПОТЕРЯНА: пункт стал обязанностью. Оставь 3 главных на сегодня, остальное убери."],
-  ["f", "🧠", "ЗАБЫЛ", "НЕТ СИГНАЛА: нужны время и якорь, а не сила воли."],
-  ["b", "🧱", "СЛИШКОМ БОЛЬШОЕ", "ВСЁ ИЛИ НИЧЕГО: если нельзя идеально, мозг выбирает ноль. ⚡ минимум решает именно это."],
-  ["a", "🌀", "ПЕРЕГРУЗ", "СЛИШКОМ МНОГО РЕШЕНИЙ: ❌ — самый дешёвый ответ при усталости. Урежь список на день."]
-];
-function askReason(it) {
+function askReason(it) {                      // ❌ → «ЧТО ПОМЕШАЛО?» своими словами
   const day = today();
-  T("skip_log").push({habit_id: it.id, day, reason: null}); save();
+  const row = {habit_id: it.id, day, reason: null, text: null, name: String(it.name || "").split("\n")[0].slice(0, 60)};
+  T("skip_log").push(row); save();
   const sh = document.createElement("div");
   sh.className = "sheet";
-  sh.innerHTML = `<div><div class="title" style="padding:4px 0">ПОЧЕМУ ❌?</div>
-    <div class="reasons">${REASONS.map(r => `<button data-r="${r[0]}">${r[1]}<small>${r[2]}</small></button>`).join("")}
-    <button data-r="m">⚡<small>ТОГДА МИНИМУМ</small></button><button data-r="-">·<small>ПРОПУСТИТЬ</small></button></div></div>`;
+  sh.innerHTML = `<div><div class="title" style="padding:4px 0">${NO} ${esc(row.name)}<br>ЧТО ПОМЕШАЛО?</div>
+    <textarea class="ai" rows="3" id="rtx" placeholder="СВОИМИ СЛОВАМИ"></textarea>
+    <div class="acts">${it.typ === "mb" || SPECIAL.includes(it.name) || it.kind === "quit" ? "" : '<button data-r="m">⚡</button>'}<button data-r="-">⏭</button><button data-r="ok">✅</button></div></div>`;
   sh.querySelectorAll("button").forEach(b => b.onclick = () => {
     const r = b.dataset.r;
-    if (r === "m") { answer(it, "m"); S.db.skip_log = T("skip_log").filter(x => !(x.habit_id === it.id && x.day === day)); }
-    else if (r !== "-") { const row = T("skip_log").find(x => x.habit_id === it.id && x.day === day); if (row) row.reason = r; }
+    if (r === "m") { answer(it, "m"); S.db.skip_log = T("skip_log").filter(x => x !== row); }
+    else if (r === "ok") row.text = sh.querySelector("#rtx").value.trim() || null;
     save(); sh.remove(); render();
   });
   document.body.appendChild(sh);
+  try { sh.querySelector("#rtx").focus(); } catch (e) {}
 }
 
 // ================================================================== УТРО-РИТУАЛ (по часам)
 function morningSteps() {
-  return dayItems().filter(i => i.kind === "morning" && i.name !== N_START && !i.status)
+  return dayItemsRaw().filter(i => i.kind === "morning" && !SPECIAL.includes(i.name) && !i.status)
     .map(i => ({id: i.id, name: i.name, n: i.name.replace(/^Подъём: /, "").replace(/\s*\n\s*/g, " ").slice(0, 40),
       s: (i.minutes || (i.name === TRAINING ? 20 : 1)) * 60, note: ""}));
 }
@@ -285,17 +290,19 @@ function paintRun(p) {
 }
 
 // ================================================================== ЭКРАНЫ
-const TABS = [["day", "DAY"], ["plan", "📅"], ["pomo", "🍅"], ["tasks", "🧳"], ["work", "🤵‍♂️"], ["set", "⚙"]];
+const TABS = [["day", "DAY"], ["plan", "📅"], ["tasks", "🧳"], ["spend", "💸"], ["work", "🤵‍♂️"], ["set", "⚙"]];
 function lastSun2130() {
   const n = new Date(), d = new Date(n); d.setHours(21, 30, 0, 0); d.setDate(d.getDate() - d.getDay());
   if (d > n) d.setDate(d.getDate() - 7);
   return d.getTime();
 }
-function exportDue() { if (!S.since) { S.since = Date.now(); save(); } return (S.lastExport || S.since) < lastSun2130(); }
+function exportDue() {
+  if (!S.since) { S.since = Date.now(); save(); }
+  if (S.gh && S.gh.token && S.sync && S.sync.backupAt && Date.now() - S.sync.backupAt < 8 * 864e5) return false; return (S.lastExport || S.since) < lastSun2130(); }
 function shell(inner) {
   const ban = exportDue() ? `<div class="warn" id="exw">⬆ ВС 21:30 · СОХРАНИ КОПИЮ ДАННЫХ (НАЖМИ)</div>` : "";
   $app.innerHTML = `<div class="scroll" id="body">${ban}${inner}</div><div class="tabs">` +
-    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] || (t[0] === "set" && tab === "fail") ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
+    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] || (t[0] === "set" && ["fail", "debt"].includes(tab)) ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
   $app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; screen = tab; render(); });
   const ew = document.getElementById("exw"); if (ew) ew.onclick = exportAll;
 }
@@ -311,8 +318,9 @@ function render() {
   if (!S.seeded && !habits().length) return renderEmpty();
   if (tab === "day") renderDay();
   else if (tab === "plan") renderPlan();
-  else if (tab === "pomo") renderPomo();
-  else if (tab === "work") renderWork();
+  else if (tab === "work") { if (!WORK_VIEWS.includes(wv.v)) wv = {v: "main"}; renderWork(); }
+  else if (tab === "spend") { if (!["spend", "sday"].includes(wv.v)) wv = {v: "spend"}; renderWork(); }
+  else if (tab === "debt") { if (!["debts", "owe", "zp", "dhist"].includes(wv.v)) wv = {v: "debts"}; renderWork(); }
   else if (tab === "tasks") renderTasks();
   else if (tab === "fail") renderFail();
   else if (tab === "set") renderSet();
@@ -323,6 +331,7 @@ function tickAll() {
   if (typeof pomoTick === "function") pomoTick();
   if (typeof workTick === "function") workTick();
   if (typeof evTick === "function") evTick();
+  if (typeof syncTick === "function") syncTick();
   if (screen === "run") return tickRun();
   if (screen === "train") return tickTrain();
   const cd = document.getElementById("cd");
@@ -343,18 +352,25 @@ function renderDay() {
   const head = `<div class="dim">${today().slice(8)}.${today().slice(5, 7)} · ${doneN}/${items.length}</div>` + (hmNow() >= "21:00" && typeof eveningSummary === "function" ? `<div class="dim" style="white-space:pre-line">${esc(eveningSummary())}</div>` : "");
   if (!first) body = `${head}<div class="item">ВСЁ ВЫПОЛНЕНО ✅</div>`;
   else if (first.at > hmNow()) body = `${head}<div class="item">⏭️ ${first.at}</div>`;
-  else {
+  else if (first.typ === "mb") {
+    const mins = Math.round(first.left.reduce((s, i) => s + (i.minutes || (i.name === TRAINING ? 20 : 1)), 0));
+    body = `${head}<div class="item">☀ УТРЕННИЙ БЛОК</div><div class="dim">${first.left.length} ШАГ. · ~${mins} МИН</div>
+      <div class="acts"><button data-a="go">${S.run ? "▶ ДАЛЬШЕ" : "▶"}</button><button data-a="n">${NO}</button></div>`;
+  } else {
     const mins = first.minutes && first.name !== TRAINING ? " · " + first.minutes + " МИН" : "";
     cdItem = first.minutes && first.name !== TRAINING ? first : null;
     const btns = (first.typ === "w" ? [["n", NO]] : itemButtons(first)).map(b => `<button data-a="${b[0]}">${b[1]}</button>`).join("");
     const winput = first.typ === "w" ? `<div class="acts"><input id="wkg" inputmode="decimal" placeholder="КГ" style="font-size:28px;text-align:center"><button id="wok">✅</button></div>` : "";
-    const mornPending = pend.some(i => i.kind === "morning" && i.name !== N_START);
     body = `${head}<div class="item">▶ ${esc(itemLabel(first))}${mins}</div>
       ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${S.priming && /прайминг/i.test(first.name) ? '<button class="btn" id="aud2">▶ 🎧 ПРАЙМИНГ</button>' : ""}${winput}<div class="acts">${btns}</div>
-      ${mornPending && first.kind === "morning" ? '<button class="btn go" id="run" style="font-size:26px;padding:18px">▶ УТРО</button>' : ""}`;
+`;
   }
-  shell(body);
+  shell((typeof pomoBar === "function" ? pomoBar() : "") + body);
   document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
+    if (first.typ === "mb") {
+      if (b.dataset.a === "go") { if (S.run) { screen = "run"; render(); } else startRun(); return; }
+      first.left.forEach(i => setStatus(i.id, "no")); save(); askReason(first); return;
+    }
     if (first.name === TRAINING && first.typ !== "w" && b.dataset.a !== "n") { startTraining(b.dataset.a === "m"); return; }
     const ask = answer(first, b.dataset.a);
     if (ask) askReason(first); else render();
@@ -362,8 +378,6 @@ function renderDay() {
   const wi = document.getElementById("wkg");
   if (wi) document.getElementById("wok").onclick = () => addWeight(first, wi.value);
   const a2 = document.getElementById("aud2"); if (a2) a2.onclick = playPriming;
-  const run = document.getElementById("run");
-  if (run) run.onclick = () => { if (S.run) { screen = "run"; render(); } else startRun(); };
   if (cdItem) { const k = cdItem.id + ":" + today(); if (!S.timers[k]) { S.timers[k] = Date.now(); save(); } paintCountdown(document.getElementById("cd")); }
 }
 function paintCountdown(el) {
@@ -403,11 +417,13 @@ function renderSet() {
     <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
     <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
     <button class="btn" data-go="why">🧠 ПРИЧИНЫ</button>
-    <button class="btn" id="prim">🎧 ПРАЙМИНГ${S.priming ? " ✅" : ""}</button></div>
+    <button class="btn" id="prim">🎧 ПРАЙМИНГ${S.priming ? " ✅" : ""}</button>
+    <button class="btn" data-tab="debt">🫴🏻</button></div>
     <input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden><input type="file" id="file" accept=".json,application/json" hidden>
-    <div class="bk"><button id="ex">💾<small>СОХРАНИТЬ · ${last}</small></button><button id="imp">⬇<small>ВОССТАНОВИТЬ</small></button></div>`);
+    <div class="bk"><button id="ex">💾<small>СОХРАНИТЬ · ${last}</small></button><button id="imp">⬇<small>ВОССТАНОВИТЬ</small></button><button id="syn">🔄<small>${syncLabel()}</small></button></div>`);
+  document.getElementById("syn").onclick = syncSetup;
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
-  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = screen = b.dataset.tab; if (tab === "tasks") tv = {v: "main"}; render(); });
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = screen = b.dataset.tab; if (tab === "tasks") tv = {v: "main"}; if (tab === "debt") wv = {v: "debts"}; render(); });
   document.getElementById("ex").onclick = exportAll;
   document.getElementById("tmr").onclick = timerMenu;
   document.getElementById("prim").onclick = () => document.getElementById("pfile").click();
@@ -417,22 +433,19 @@ function renderSet() {
 }
 // ---------------------------------------------------------------- причины
 function renderWhy() {
-  const since = new Date(); since.setDate(since.getDate() - 13); const s0 = isoDay(since);
+  const s0 = addDays(today(), -13);
   const hs = new Set(habits().filter(h => h.kind !== "quit").map(h => h.id));
   const logs = T("habit_logs").filter(l => l.day >= s0 && hs.has(l.habit_id));
   const mins = T("min_log").filter(m => m.day >= s0 && hs.has(m.habit_id)).length;
   const yes = logs.filter(l => l.status === "yes").length, no = logs.filter(l => l.status === "no").length;
-  const sk = T("skip_log").filter(r => r.day >= s0), cnt = {};
-  sk.forEach(r => cnt[r.reason || "_"] = (cnt[r.reason || "_"] || 0) + 1);
-  const known = REASONS.filter(r => cnt[r[0]]).sort((a, b) => cnt[b[0]] - cnt[a[0]]);
+  const sk = T("skip_log").filter(r => r.day >= s0).sort((a, b) => b.day.localeCompare(a.day));
+  const name = r => r.name || (habits().find(h => h.id === r.habit_id) || {name: r.habit_id === "mb" ? "УТРЕННИЙ БЛОК" : "?"}).name.split("\n")[0];
+  const txt = sk.filter(r => r.text), empty = sk.length - txt.length;
   let h = `<div class="title">🧠 ПРИЧИНЫ · 14 ДНЕЙ</div><div class="card">✅ ${Math.max(yes - mins, 0)} · ⚡ ${mins} · ❌ ${no}</div>`;
-  if (!sk.length) h += `<div class="dim">ДАННЫХ ПОКА НЕТ. НАЖИМАЙ ❌ И ВЫБИРАЙ ПРИЧИНУ.</div>`;
-  else {
-    h += known.map(r => `<div class="card">${r[1]} ${r[2]}: ${cnt[r[0]]}</div>`).join("");
-    if (cnt._) h += `<div class="card">▫️ БЕЗ ПРИЧИНЫ: ${cnt._}</div>`;
-    h += `<div class="sec">ГЛУБИННОЕ</div>` + known.slice(0, 2).map(r => `<div class="card">${r[3]}</div>`).join("");
-    if (sk.length >= 5 && (cnt._ || 0) / sk.length >= 0.5) h += `<div class="card">❌ БЕЗ ПРИЧИНЫ — АВТОПИЛОТ. ПОПРОБУЙ ⚡ ВМЕСТО ❌.</div>`;
-  }
+  h += txt.length ? txt.map(r => `<div class="card"><div class="dim" style="text-align:left">${r.day.slice(8)}.${r.day.slice(5, 7)} · ${esc(name(r))}</div>${esc(r.text)}</div>`).join("")
+    : `<div class="dim">ПОКА ПУСТО. ПОСЛЕ ❌ ПИШИ, ЧТО ПОМЕШАЛО.</div>`;
+  if (empty) h += `<div class="dim">❌ БЕЗ ОТВЕТА: ${empty}</div>`;
+  h += `<div class="dim">ГЛУБИННЫЕ ПРИЧИНЫ РАЗБЕРЁТ CLAUDE: НАПИШИ В ЧАТ «РАЗБЕРИ ПРИЧИНЫ».</div>`;
   $app.innerHTML = `<div class="scroll">${h}</div><button class="btn" id="back">⬅</button>`;
   document.getElementById("back").onclick = () => { screen = "set"; tab = "set"; render(); };
 }

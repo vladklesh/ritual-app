@@ -69,6 +69,10 @@ const placeLabel = p => p.rate ? `${p.name} · ${p.rate}₽/${p.unit === "hour" 
 const workRow = id => T("work_days").find(w => w.id === id);
 const wplace = w => getPlace(w.place_id) || {name: "?", rate: 0, unit: "shift"};
 const due = w => (w.earned || 0) + (w.exp || 0);
+const isHourly = p => !!p && (p.unit === "hour" || /mcg|манифик/i.test(p.name || ""));
+const ceilH = h => Math.ceil(h - 1e-9);                // часы смены округляются вверх
+function calcEarn(w) { const p = wplace(w); if (isHourly(p) && w.hours != null) w.earned = Math.round(w.hours * (p.rate || 500) * 100) / 100; }
+const WORK_VIEWS = ["main", "shifts", "shift", "places", "pay", "rep", "year", "rmenu"];
 const taxRate = pid => { const p = pid ? getPlace(pid) : null; return p && p.name.trim().toUpperCase() === "MCG" ? TAX_RATE : 0; };
 
 function savePlace(name, rate, unit) {
@@ -89,13 +93,14 @@ function planWork(day, pid) {                    // одна смена в де�
 }
 function workStage(w) {
   if (w.hours == null) return "hours";
+  if (w.earned == null && isHourly(wplace(w))) { calcEarn(w); save(); }
   if (w.earned == null) return "earned";
   if (w.tips == null) return "tips";
   return "done";
 }
 function workPending() {
   return T("work_days").filter(w => w.day <= today() && !w.src && (w.hours == null ||
-    (wplace(w).unit === "shift" && w.earned == null) || w.tips == null)).sort((a, b) => a.day.localeCompare(b.day));
+    (!isHourly(wplace(w)) && w.earned == null) || w.tips == null)).sort((a, b) => a.day.localeCompare(b.day));
 }
 function workPrompt(w) {
   const p = wplace(w), head = `РАБОТА ${ddmm(w.day)} · ${p.name.toUpperCase()}`, st = workStage(w);
@@ -103,17 +108,16 @@ function workPrompt(w) {
     ? `${head}\nСО СКОЛЬКО НАЧИНАЕШЬ? ПРИМЕР: 11 ИЛИ 11:30\nКОНЕЦ СПРОШУ ВЕЧЕРОМ (ИЛИ СРАЗУ 11:00 - 23:00)`
     : `${head}\nВРЕМЯ СМЕНЫ? ПРИМЕР: 7:00 - 3:00 ИЛИ 8`;
   if (st === "earned") return `${head} · ${gnum(w.hours)} Ч\nСКОЛЬКО ЗАРАБОТАЛ (СТАВКА)? НАПИШИ СУММУ` + (p.rate ? ` (+ = ${p.rate}₽)` : "");
-  return `${head} · ${gnum(w.hours)} Ч · ${fmtRub(w.earned)}\nБОНУСЫ? НАПИШИ СУММУ (1500 ИЛИ 500+1000)`;
+  return `${head} · ${gnum(w.hours)} Ч · ${fmtRub(w.earned)}\nБОНУСЫ КРОМЕ SHOP BOT? (1500 ИЛИ 500+1000)\nSHOP BOT ПОДТЯНЕТСЯ САМ`;
 }
 function applyWorkText(w, text) {                // ввод часов / суммы / бонусов; вернёт подтверждение или null
   const st = workStage(w), p = wplace(w), nm = `${ddmm(w.day)} ${p.name}`;
   if (st === "hours") {
     const ts = w.day >= today() ? parseStart(text) : null;
     if (ts) { w.t_from = ts; w.t_to = null; w.hours = null; kvPut("alarm:" + w.id, ""); save(); return `${nm}: С ${ts} · КОНЕЦ СПРОШУ ВЕЧЕРОМ`; }
-    const rg = parseRange(text), h = rg ? rg[2] : parseHours(text);
+    const rg = parseRange(text), h = rg ? ceilH(rg[2]) : parseHours(text);
     if (h == null) return null;
-    if (p.unit === "hour") w.earned = Math.round(h * p.rate * 100) / 100;
-    w.hours = h; w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; save();
+    w.hours = h; calcEarn(w); w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; save();
     return `${nm}: ${gnum(h)} Ч${rg ? ` (${rg[0]}–${rg[1]})` : ""}${w.earned != null ? " = " + fmtRub(w.earned) : ""}`;
   }
   if (st === "earned") {
@@ -128,8 +132,8 @@ function applyWorkText(w, text) {                // ввод часов / сум
 function setShiftEnd(w, tTo) {                   // t_from уже есть, конец известен
   const rg = parseRange(`${w.t_from} - ${tTo}`); if (!rg) return null;
   const p = wplace(w);
-  w.hours = rg[2]; w.t_to = rg[1]; if (p.unit === "hour") w.earned = Math.round(rg[2] * p.rate * 100) / 100;
-  kvPut("endok:" + w.id, "1"); return rg;
+  w.hours = ceilH(rg[2]); w.t_to = rg[1]; calcEarn(w);
+  kvPut("endok:" + w.id, "1"); return [rg[0], rg[1], w.hours];
 }
 function wakeAlarm(day, tFrom) {                 // подъём за 2 часа до начала (час ритуалы + час дорога)
   if (!tFrom || day < today()) return "";
@@ -281,7 +285,7 @@ function shiftChain(wid) {
   }
   const extra = [];
   if (st === "hours") extra.push(["❌ НЕ РАБОТАЛ", () => { S.db.work_days = T("work_days").filter(x => x.id !== wid); save(); refresh(); }]);
-  if (st === "tips") extra.push(["✅ 0₽", () => { w.tips = 0; save(); shiftChain(wid); }]);
+  if (st === "tips") extra.push(["НЕТ", () => { w.tips = 0; save(); shiftChain(wid); }]);
   askText(workPrompt(w), t => {
     const r = applyWorkText(w, t);
     if (r == null) { toast("НЕ ПОНЯЛ. ПОПРОБУЙ ЕЩЁ РАЗ"); return false; }
@@ -308,7 +312,7 @@ function startShift(day, pid) {                  // описание → (ста
   askText(`${ddmm(day)} · ${p.name.toUpperCase()}\nОПИСАНИЕ СМЕНЫ?`, t => {
     if (!t.trim()) return false;
     w.note = t.trim().slice(0, 300); save();
-    if (p.name.toLowerCase() === "mcg") { setTimeout(() => shiftChain(wid), 30); return true; }
+    if (isHourly(p)) { setTimeout(() => shiftChain(wid), 30); return true; }
     setTimeout(() => askText(`СТАВКА ЗА СМЕНУ? НАПИШИ СУММУ${p.rate ? ` (+ = ${p.rate}₽)` : ""}`, s => {
       const a = s.trim() === "+" ? (p.rate || null) : parseSum(s);
       if (a == null) { toast("НЕ ПОНЯЛ. НАПИШИ СУММУ"); return false; }
@@ -329,7 +333,9 @@ function addShiftOnDate() {
 function workTick() {
   const nowT = Date.now(); if (nowT - (workTick.t || 0) < 15000) return; workTick.t = nowT;
   if (document.hidden || document.querySelector(".sheet") || screen === "run" || screen === "train") return;
+  workPlanSyncAll();
   const n = new Date();
+  if (n.getDay() === 0 && hmNow() >= "21:00" && !kvGet("bonusweek:" + today())) { kvPut("bonusweek:" + today(), "1"); bonusWeek(); return; }
   for (const w of T("work_days")) {
     if (!w.t_from || w.day < today()) continue;                             // будильник за 2 ч до старта
     if (!kvGet("alarm:" + w.id)) { const a = wakeAlarm(w.day, w.t_from); kvPut("alarm:" + w.id, "1"); if (a) { alarmSheet(w, a); return; } }
@@ -358,7 +364,7 @@ function goHome(w) {
   if (!w.t_from) return editStartEnd(w);
   const r = setShiftEnd(w, pad(n.getHours()) + ":" + pad(Math.floor(n.getMinutes() / 5) * 5));
   if (!r) return;
-  save(); const t = toast(`ДОМОЙ В ${r[1]} · ${w.t_from}–${r[1]} = ${gnum(r[2])} Ч${wplace(w).unit === "hour" ? " = " + fmtRub(w.earned) : ""}`);
+  save(); const t = toast(`ДОМОЙ В ${r[1]} · ${w.t_from}–${r[1]} = ${gnum(r[2])} Ч${isHourly(wplace(w)) ? " = " + fmtRub(w.earned) : ""}`);
   setTimeout(() => { t.remove(); shiftChain(w.id); }, 1500);
 }
 function editEnd(w) {
@@ -372,14 +378,14 @@ function editEnd(w) {
 function editStartEnd(w) {
   askText("ВО СКОЛЬКО НАЧАЛ И ДО СКОЛЬКИ? (7:00 - 3:00)", t => {
     const rg = parseRange(t); if (!rg) { toast("НЕ ПОНЯЛ"); return false; }
-    w.t_from = rg[0]; w.t_to = rg[1]; w.hours = rg[2]; if (wplace(w).unit === "hour") w.earned = Math.round(rg[2] * wplace(w).rate * 100) / 100;
+    w.t_from = rg[0]; w.t_to = rg[1]; w.hours = ceilH(rg[2]); calcEarn(w);
     kvPut("endok:" + w.id, "1"); setTimeout(() => shiftChain(w.id), 30); return true;
   });
 }
 
 // ---------------------------------------------------------------- экраны
 function renderWork() {
-  _acts = [];
+  _acts = []; workPlanSyncAll();
   ({main: wMain, shifts: wShifts, shift: wShift, places: wPlaces, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu, ...WEXT}[wv.v] || wMain)();
 }
 function wMain() {
@@ -387,10 +393,8 @@ function wMain() {
   let h = `<div class="pre">${esc(reportText(ym))}</div>`;
   if (unp.length) h += `<div class="dim" style="white-space:pre-line">${esc(unpaidLine(unp, ym))}</div>`;
   const wmap = {}; places().forEach(p => { const o = owedLine(p); if (o) h += `<div class="dim">${esc(o)}</div>`; });
-  h += `<div class="r2">${B("➕ СМЕНА", addShiftOnDate)}${B("💰 ЗП", payStart)}</div>`;
-  h += `<div class="r2">${B("💸 ТРАТЫ", () => wgo("spend"))}${B("🗓 ИТОГИ", () => wgo("rmenu"))}</div>`;
+  h += `<div class="r2">${B("➕", addShiftOnDate)}${B("💰 ЗП", payStart)}${B("🗓 ИТОГИ", () => wgo("rmenu"))}</div>`;
   h += `<div class="r2">${B("📋 СМЕНЫ", () => wgo("shifts"))}${B("📍 МЕСТА", () => wgo("places"))}</div>`;
-  h += B("🫴 ДОЛГИ И ВКЛАДЫ", () => wgo("debts"));
   if (fill.length) h += B(`✍ ДОЗАПОЛНИТЬ: ${fill.length}`, () => shiftChain(fill[0].id));
   if (pend.length) {
     h += `<div class="sec">ПЕРЕВЕДИ</div>`;
@@ -407,6 +411,8 @@ function wShift() {
   const p = wplace(w), ol = owedLine(p);
   const L = [`${ddmm(w.day)} · ${p.name}`, `ЧАСОВ: ${w.hours == null ? "НЕТ" : gnum(w.hours)}${w.t_from ? ` (${w.t_from}–${w.t_to || "?"})` : ""}`,
     `СТАВКА: ${w.earned == null ? "НЕТ" : fmtRub(w.earned)}`, `БОНУСЫ: ${w.tips == null ? "НЕТ" : fmtRub(w.tips)}`];
+  const si = T("shop_inc").filter(r => r.day === w.day).reduce((s, r) => s + (r.amount || 0), 0);
+  if (si) L.push(`🛒 SHOP BOT: ${fmtRub(si)}`);
   if (w.exp) L.push(`➖ ВНУТРИ КОМПАНИИ: ${fmtRub(w.exp)}`);
   if (ol) L.push(ol);
   if (w.paid_on) L.push(`СТАВКА ПОЛУЧЕНА: ${ddmm(w.paid_on)}`);
@@ -414,8 +420,8 @@ function wShift() {
   const re = () => renderWork();
   W(`<div class="pre">${esc(L.join("\n"))}</div>
     <div class="r2">${B("⏱ ВРЕМЯ", () => askText(`ВРЕМЯ СМЕНЫ ${ddmm(w.day)}\nНАПИШИ: 7:00 - 3:00 ИЛИ ЧАСЫ (8)`, t => {
-      const rg = parseRange(t), h = rg ? rg[2] : parseHours(t); if (h == null) { toast("НЕ ПОНЯЛ"); return false; }
-      w.hours = h; w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; if (p.unit === "hour") w.earned = Math.round(h * p.rate * 100) / 100;
+      const rg = parseRange(t), h = rg ? ceilH(rg[2]) : parseHours(t); if (h == null) { toast("НЕ ПОНЯЛ"); return false; }
+      w.hours = h; w.t_from = rg ? rg[0] : null; w.t_to = rg ? rg[1] : null; calcEarn(w);
       save(); re(); return true; }, {val: w.t_from ? `${w.t_from} - ${w.t_to}` : ""}))}
     ${B("💵 БОНУСЫ", () => askText(`БОНУСЫ ${ddmm(w.day)}\nНОВАЯ СУММА (1500 ИЛИ 500+1000) ИЛИ +300, ЧТОБЫ ПРИБАВИТЬ`, t => {
       const add = t.trim().startsWith("+"), a = parseSum(add ? t.trim().slice(1) : t); if (a == null) { toast("НЕ ПОНЯЛ"); return false; }
@@ -507,7 +513,7 @@ function wSpend() {
   }
   W(`<div class="pre">${esc(L.join("\n"))}</div><div class="r2">${B("➕ " + ddmm(today()), () => spendAdd(today()))}${B("📅 ДРУГОЙ ДЕНЬ", () => choose("ЗА КАКОЙ ДЕНЬ ЗАПИСАТЬ?",
     [...Array(14).keys()].map(k => { const d = addDays(today(), -k); return [`${ddmm(d)} ${spendCount(d) ? "−" + fmtN(spendSum(d)) : "❓"}`, () => { closeTop(); spendAdd(d); }]; })))}</div>
-    <div class="r2">${B("✏️ ПРАВКА", () => wgo("sday"))}${B("⬅", () => wgo("main"))}</div>`);
+    ${B("✏️ ПРАВКА", () => wgo("sday"))}`);
 }
 function wSday() {
   if (!wv.day) {
@@ -525,3 +531,49 @@ function wRmenu() {
 }
 function wRep() { W(`<div class="pre">${esc(reportText(wv.ym))}</div><div class="r2">${B("◀", () => wgo("rep", {ym: ymAdd(wv.ym, -1)}))}${B("▶", () => wgo("rep", {ym: ymAdd(wv.ym, 1)}))}${B("🗓 ГОД", () => wgo("year", {yy: wv.ym.slice(0, 4)}))}</div>` + B("⬅", () => wgo("rmenu"))); }
 function wYear() { W(`<div class="pre">${esc(yearText(wv.yy))}</div>` + B("⬅", () => wgo("rmenu", {yy: wv.yy}))); }
+
+// ---------------------------------------------------------------- смена в 📅: дорога 1 ч туда, смена (минимум 8 ч), дорога 1 ч обратно
+function addSpan(day, from, dur, base) {
+  while (dur > 0) {
+    while (from < 0) { day = addDays(day, -1); from += 1440; }
+    while (from >= 1440) { day = addDays(day, 1); from -= 1440; }
+    const seg = Math.min(dur, 1440 - from);
+    T("plan").push(Object.assign({id: nextId("plan"), day, from, to: from + seg, nopomo: true}, base));
+    dur -= seg; from += seg;
+  }
+}
+function workPlanSync(w) {
+  S.db.plan = T("plan").filter(e => e.work !== w.id);
+  if (w.t_from) {
+    const st = hm2m(w.t_from), p = wplace(w);
+    let dur = w.hours != null ? w.hours * 60 : 0;
+    if (w.t_to) { const en = hm2m(w.t_to); dur = Math.max(dur, ((en - st) % 1440 + 1440) % 1440); }
+    dur = Math.max(480, dur);
+    addSpan(w.day, st - 60, 60, {title: "🚇 НА РАБОТУ", color: PCOL[6], work: w.id});
+    addSpan(w.day, st, dur, {title: "🤵‍♂️ " + p.name, color: PCOL[1], work: w.id});
+    addSpan(w.day, st + dur, 60, {title: "🚇 ДОМОЙ", color: PCOL[6], work: w.id});
+  }
+  w._ps = [w.t_from, w.t_to, w.hours, w.place_id].join("|");
+}
+function workPlanSyncAll() {
+  let ch = false;
+  const ids = new Set(T("work_days").map(w => w.id));
+  if (T("plan").some(e => e.work && !ids.has(e.work))) { S.db.plan = T("plan").filter(e => !e.work || ids.has(e.work)); ch = true; }
+  const from = addDays(today(), -3);
+  T("work_days").forEach(w => {
+    if (w.day < from) return;
+    const sig = [w.t_from, w.t_to, w.hours, w.place_id].join("|");
+    if (w._ps !== sig) { workPlanSync(w); ch = true; }
+  });
+  T("work_places").forEach(p => { if (/mcg|манифик/i.test(p.name || "") && (p.unit !== "hour" || !p.rate)) { p.unit = "hour"; p.rate = p.rate || 500; ch = true; } });
+  if (ch) save();
+}
+// ---------------------------------------------------------------- вс вечером: бонусы за неделю (то, чего нет в shop bot)
+function bonusWeek() {
+  const ws = T("work_days").filter(w => w.day >= addDays(today(), -6) && w.day <= today()).sort((a, b) => a.day.localeCompare(b.day));
+  sheetOf(b => `<div class="stt">💵 ЗАПИШИ БОНУСЫ ЗА НЕДЕЛЮ\n(ТО, ЧЕГО НЕТ В SHOP BOT)</div>` +
+    (ws.map(w => b(`${ddmm(w.day)} ${esc(wplace(w).name)} · ${w.tips == null ? "—" : fmtRub(w.tips)}`, () => { closeTop(); askText(`БОНУСЫ ${ddmm(w.day)}: НОВАЯ СУММА ИЛИ +300`, t => {
+      const add = t.trim().startsWith("+"), a = parseSum(add ? t.trim().slice(1) : t); if (a == null) { toast("НЕ ПОНЯЛ"); return false; }
+      w.tips = add ? (w.tips || 0) + a : a; save(); setTimeout(bonusWeek, 30); return true; }); }, "btn")).join("") || `<div class="dim">СМЕН ЗА НЕДЕЛЮ НЕТ</div>`) +
+    `<div class="acts">${b("✅", closeTop)}</div>`);
+}
