@@ -290,7 +290,7 @@ function paintRun(p) {
 }
 
 // ================================================================== ЭКРАНЫ
-const TABS = [["day", "DAY"], ["plan", "📅"], ["tasks", "🧳"], ["spend", "💸"], ["work", "🤵‍♂️"], ["set", "⚙"]];
+const TABS = [["day", "DAY"], ["plan", "📅"], ["tasks", "🧳"], ["spend", "➖"], ["work", "🤵‍♂️"], ["set", "⚙"]];
 function lastSun2130() {
   const n = new Date(), d = new Date(n); d.setHours(21, 30, 0, 0); d.setDate(d.getDate() - d.getDay());
   if (d > n) d.setDate(d.getDate() - 7);
