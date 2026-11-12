@@ -90,7 +90,7 @@ function renderStats() {
     rows.map(r => B(`🗓 ${r.yy} · ${r.n} СМ. · ${fmtN(r.net)}₽${spendByCat(r.yy) ? "" : ""}`, () => { tab = "work"; screen = "work"; wv = {v: "rmenu", yy: r.yy}; render(); })).join("") +
     (all.length ? `<div class="sec">ПРИВЫЧКИ ЗА ВСЁ ВРЕМЯ</div><div class="pre" style="font-size:15px">${all.join("\n")}</div>` : "") +
     `<div class="sec">ТРАТЫ ПО КАТЕГОРИЯМ</div><div class="pre" style="font-size:15px">${rows.map(r => spendByCat(r.yy) ? r.yy + ": " + spendByCat(r.yy) : "").filter(Boolean).join("\n") || "—"}</div>` +
-    B("🍅 ПОМИДОРКИ", () => { screen = "pomo"; render(); }) + B("📊💪 ТРЕНИРОВКИ", () => { screen = "tstats"; render(); }) + B("⬅", () => { screen = "set"; tab = "set"; render(); }));
+    B("📊💪 ТРЕНИРОВКИ", () => { screen = "tstats"; render(); }) + B("⬅", () => { screen = "set"; tab = "set"; render(); }));
   document.querySelectorAll("[data-a]").forEach(b => b.onclick = () => _acts[+b.dataset.a]());
 }
 

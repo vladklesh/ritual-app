@@ -267,7 +267,7 @@ function finishRun(full) {
 }
 function renderRun() {
   $app.innerHTML = `<button class="x" id="x">✕</button>
-    <div class="big clock" id="clk">0:00</div><div class="list" id="lst"></div>
+    <div class="big clock" id="clk">0:00</div><div class="stepnm" id="lst"></div>
     <button class="aud" id="aud" hidden>▶ 🎧</button>
     <div class="foot"><button class="ic" id="pv">⏮</button><div class="big cnt" id="cn">1/1</div><button class="ic" id="nx">⏭</button></div>`;
   document.getElementById("aud").onclick = playPriming;
@@ -285,8 +285,7 @@ function paintRun(p) {
   clk.classList.toggle("paused", !!r.pausedAt);
   document.getElementById("cn").textContent = (idx + 1) + "/" + r.steps.length;
   const au = document.getElementById("aud"); if (au) au.hidden = !(S.priming && /прайминг/i.test(st.name || st.n));
-  document.getElementById("lst").innerHTML = r.steps.slice(idx).map((s, k) =>
-    `<div class="row${k === 0 ? " cur" : ""}">${idx + k + 1}. ${esc(s.n)}: ${fmt(s.s)}${s.note ? " • " + esc(s.note) : ""}</div>`).join("");
+  document.getElementById("lst").innerHTML = esc(st.n) + (st.note ? `<small>${esc(st.note)}</small>` : "");
 }
 
 // ================================================================== ЭКРАНЫ
@@ -315,7 +314,6 @@ function render() {
   if (screen === "edit") return renderEdit();
   if (screen === "why") return renderWhy();
   if (screen === "stats") return renderStats();
-  if (screen === "pomo") { renderPomo(); timer = setInterval(tickAll, 1000); return; }
   if (!S.seeded && !habits().length) return renderEmpty();
   if (tab === "day") renderDay();
   else if (tab === "plan") renderPlan();
