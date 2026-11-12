@@ -11,7 +11,9 @@ const CATS = [
   {k: "p", ic: "🧠", nm: "РОСТ И ПСИХИКА", c: "#4a78d6"},
   {k: "a", ic: "🎨", nm: "ЯРКОСТЬ И ТВОРЧЕСТВО", c: "#b59a2e"},
   {k: "c", ic: "👥", nm: "ОКРУЖЕНИЕ", c: "#7a4fb5"}];
-const PHH = 52;                                   // высота часа, px
+const PHH = 52;
+const isMb = e => !!e && !e.work && (e.mb || (/🚿/.test(e.title || "") && /🍳/.test(e.title || "")));   // утренний блок в 📅
+const mbEvent = day => planOf(day).find(e => !e.spill && isMb(e)) || null;                                   // высота часа, px
 const WD = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
 const MON = ["ЯНВАРЬ", "ФЕВРАЛЬ", "МАРТ", "АПРЕЛЬ", "МАЙ", "ИЮНЬ", "ИЮЛЬ", "АВГУСТ", "СЕНТЯБРЬ", "ОКТЯБРЬ", "НОЯБРЬ", "ДЕКАБРЬ"];
 let pv = "3", pday = today(), pScroll = null;     // вид: "1" | "3" | "7" | "m"
@@ -116,7 +118,7 @@ function planRepFill() {
     const stop = r.until && r.until < end ? r.until : end;
     for (; d <= stop; d = addDays(d, 1)) {
       if (!repHits(r, d)) continue;
-      T("plan").push({id: nextId("plan"), day: d, from: r.from, to: r.to, title: r.title, color: r.color, sph: r.sph, nopomo: r.nopomo, rep: r.id}); ch = true;
+      T("plan").push({id: nextId("plan"), day: d, from: r.from, to: r.to, title: r.title, color: r.color, sph: r.sph, nopomo: r.nopomo, mb: r.mb, rep: r.id}); ch = true;
     }
     if (r.upto !== stop) { r.upto = stop; ch = true; }
   });
@@ -124,7 +126,7 @@ function planRepFill() {
 }
 function repNew(e, rule) {
   const id = nextId("plan_rep");
-  T("plan_rep").push({id, rule, wday: dObj(e.day).getDay(), start: e.day, until: null, upto: null, from: e.from, to: e.to, title: e.title, color: e.color, sph: e.sph, nopomo: e.nopomo});
+  T("plan_rep").push({id, rule, wday: dObj(e.day).getDay(), start: e.day, until: null, upto: null, from: e.from, to: e.to, title: e.title, color: e.color, sph: e.sph, nopomo: e.nopomo, mb: !!e.mb});
   S.db.plan = T("plan").filter(x => x !== e);           // первое дело создаст правило
   planRepFill();
 }
@@ -166,6 +168,7 @@ function openEv(id, day, from) {
   const r0 = e.rep ? T("plan_rep").find(x => x.id === e.rep) : null;
   const w = document.createElement("div"); w.className = "sheet"; w.id = "evs";
   w.innerHTML = `<div>
+    ${isMb(e) && e.day === today() && !S.runs.some(r => r.day === today()) ? '<button class="btn go" id="emst">▶ НАЧАТЬ</button>' : ""}
     <input id="et" placeholder="ЧТО ДЕЛАЮ" value="${esc(e.title)}">
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
     <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}"><input type="time" id="eto" value="${e.to >= 1440 ? "23:59" : m2hm(e.to)}"></div>
@@ -174,11 +177,13 @@ function openEv(id, day, from) {
     <div class="dim" id="ecn"></div>
     <div class="chips" id="erep">${REPS.map(x => `<button data-r="${x[0]}">${x[1]}</button>`).join("")}</div>
     <button class="btn" id="enp" style="margin:8px 0 0"></button>
+    <button class="btn" id="emb" style="margin:8px 0 0"></button>
     <div class="acts">${id ? '<button id="edel">🗑</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
   document.body.appendChild(w);
   const g = i => w.querySelector("#" + i);
-  let color = e.color, sph = e.sph || (CATS.find(c => c.c === e.color) || {}).k || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
+  let mb = isMb(e), color = e.color, sph = e.sph || (CATS.find(c => c.c === e.color) || {}).k || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
   const paint = () => {
+    g("emb").textContent = mb ? "☀ УТРЕННИЙ БЛОК: ДА" : "☀ УТРЕННИЙ БЛОК: НЕТ";
     g("enp").textContent = np ? "⛔ БЕЗ ПОМИДОРОК (РАБОТА, СОН, ДОРОГА)" : "🍅 ПОМИДОРКИ ЕСТЬ";
     w.querySelectorAll("[data-k]").forEach(b => b.classList.toggle("on", b.dataset.k === sph));
     const cc = CATS.find(c => c.k === sph); w.querySelector("#ecn").textContent = cc ? cc.nm : "";
@@ -187,7 +192,9 @@ function openEv(id, day, from) {
   paint();
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
+  if (g("emst")) g("emst").onclick = () => { w.remove(); if (S.run) { screen = "run"; render(); } else startRun(); };
   g("enp").onclick = () => { np = !np; paint(); };
+  g("emb").onclick = () => { mb = !mb; paint(); };
   w.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { color = b.dataset.c; sph = b.dataset.k; paint(); });
   w.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rule = b.dataset.r; paint(); });
   w.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
@@ -214,7 +221,7 @@ function openEv(id, day, from) {
     let t = hm2m(g("eto").value);
     if (t === 0) t = 1440; else if (t == null || t <= f) t = Math.min(1440, f + 60);
     const nd = g("ed").value || e.day;
-    const apply = x => { x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; };
+    const apply = x => { x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; };
     pday = nd;
     if (!r0) {                                           // обычное дело (или становится повторяющимся)
       apply(e); e.day = nd;

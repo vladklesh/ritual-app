@@ -97,10 +97,11 @@ function dayItems(day) {                     // утренние шаги свё
   const raw = dayItemsRaw(day), out = [];
   const steps = raw.filter(i => i.kind === "morning" && !SPECIAL.includes(i.name));
   raw.forEach(i => {
+    if (i.name === N_START) return;                       // «начать день» убран: день начинается с утреннего блока
     if (i.kind !== "morning" || SPECIAL.includes(i.name)) return out.push(i);
     if (i !== steps[0]) return;
-    const left = steps.filter(s => !s.status);
-    out.push({typ: "mb", id: "mb", kind: "morning", name: "УТРЕННИЙ БЛОК", at: "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
+    const left = steps.filter(s => !s.status), ev = typeof mbEvent === "function" ? mbEvent(day || today()) : null;
+    out.push({typ: "mb", id: "mb", kind: "morning", name: ev ? ev.title : "УТРЕННИЙ БЛОК", at: ev ? m2hm(ev.from) : "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
   });
   return out;
 }
@@ -210,6 +211,7 @@ function commit(r, i) {                       // шаг пройден → пр�
 }
 function markUpTo(r, idx, how) {
   for (let i = r.seen; i < idx; i++) {
+    if (r.marks[i] && r.marks[i].how !== "auto") continue;   // ⏩ и ❌ не превращаются в ✅
     if (!r.marks[i]) r.marks[i] = {how, act: how === "auto" ? r.steps[i].s : null};
     commit(r, i);
   }
@@ -242,6 +244,16 @@ function next() {
   if (p.idx + 1 >= r.steps.length) { finishRun(true); return; }
   jump(r, p.c[p.idx + 1]); save(); tickRun();
 }
+function stepOut(how) {                         // ⏩ пропустить (останется неотмеченным) · ❌ не сделал
+  const r = S.run; if (!r) return;
+  const p = posOf(r);
+  if (p.idx >= r.steps.length) return;
+  r.marks[p.idx] = {how, act: Math.round(p.el - p.c[p.idx])};
+  if (how === "no") setStatus(r.steps[p.idx].id, "no");
+  r.seen = Math.max(r.seen, p.idx + 1);
+  if (p.idx + 1 >= r.steps.length) { finishRun(true); return; }
+  jump(r, p.c[p.idx + 1]); save(); tickRun();
+}
 function prev() {
   const r = S.run; if (!r) return;
   const p = posOf(r), into = p.el - p.c[p.idx];
@@ -269,10 +281,12 @@ function renderRun() {
   $app.innerHTML = `<button class="x" id="x">✕</button>
     <div class="big clock" id="clk">0:00</div><div class="stepnm" id="lst"></div>
     <button class="aud" id="aud" hidden>▶ 🎧</button>
-    <div class="foot"><button class="ic" id="pv">⏮</button><div class="big cnt" id="cn">1/1</div><button class="ic" id="nx">⏭</button></div>`;
+    <div class="dim" id="cn" style="text-align:center">1/1</div>
+    <div class="foot"><button class="ic" id="ok">✅</button><button class="ic" id="sk">⏩</button><button class="ic" id="no">❌</button></div>`;
   document.getElementById("aud").onclick = playPriming;
-  document.getElementById("pv").onclick = prev;
-  document.getElementById("nx").onclick = next;
+  document.getElementById("ok").onclick = next;
+  document.getElementById("sk").onclick = () => stepOut("skip");
+  document.getElementById("no").onclick = () => stepOut("no");
   document.getElementById("clk").onclick = togglePause;
   document.getElementById("x").onclick = () => { if (confirm("ЗАКОНЧИТЬ РАНЬШЕ?")) finishRun(false); };
   tickRun();
@@ -353,7 +367,7 @@ function renderDay() {
   else if (first.at > hmNow()) body = `${head}<div class="item">⏭️ ${first.at}</div>`;
   else if (first.typ === "mb") {
     const mins = Math.round(first.left.reduce((s, i) => s + (i.minutes || (i.name === TRAINING ? 20 : 1)), 0));
-    body = `${head}<div class="item">☀ УТРЕННИЙ БЛОК</div><div class="dim">${first.left.length} ШАГ. · ~${mins} МИН</div>
+    body = `${head}<div class="item">${esc(first.name)}</div><div class="dim">${first.left.length} ШАГ. · ~${mins} МИН</div>
       <div class="acts"><button data-a="go">${S.run ? "▶ ДАЛЬШЕ" : "▶"}</button><button data-a="n">${NO}</button></div>`;
   } else {
     const mins = first.minutes && first.name !== TRAINING ? " · " + first.minutes + " МИН" : "";
