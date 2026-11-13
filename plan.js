@@ -271,7 +271,7 @@ function bindDrag(pg) {
       const e = T("plan").find(x => x.id === +el.dataset.id);
       if (!e || el.classList.contains("sp") || (e.work && e.role !== "shift")) return;
       const rc = el.getBoundingClientRect();
-      d = {e, el, x: sx, y: sy, off: sy - rc.top, rs: rc.bottom - sy < 22 && !(e.to > 1440)};
+      d = {e, el, x: sx, y: sy, off: sy - rc.top, rs: false};                // только перенос; длительность меняется внутри дела
       el.style.zIndex = 5; el.style.opacity = ".9"; el.style.outline = "2px solid #fff";
       try { navigator.vibrate && navigator.vibrate(15); } catch (x) {}
       place();
@@ -280,7 +280,7 @@ function bindDrag(pg) {
         if (d.y < r.top + 50) pg.scrollTop -= 10; else if (d.y > r.bottom - 50) pg.scrollTop += 10; else return;
         place();
       }, 16);
-    }, 350);
+    }, 500);
   }, {passive: true});
   pg.addEventListener("touchmove", ev => {
     const t = ev.touches[0];
