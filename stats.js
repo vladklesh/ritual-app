@@ -90,7 +90,7 @@ function renderHabitWeek() {
     const st = statusMap(d)[h.id], sign = st === "yes" ? "✅" : st === "no" ? "❌" : "—";
     return '<td><button class="habit-cell" data-h="' + h.id + '" data-d="' + d + '">' + sign + '</button></td>';
   }).join('') + '</tr>').join('');
-  return '<div class="sec">СТАТИСТИКА 📊</div><div class="acts"><button id="weekprev">←</button><span>' + monday + ' — ' + dates[6] + '</span><button id="weeknext">→</button></div><div style="overflow-x:auto"><table class="tbl habit-week">' + header + rows + '</table></div><div class="dim">Нажми: — → ✅ → ❌ → —.</div>';
+  return '<div class="sec">СТАТИСТИКА 📊</div><div class="acts"><button id="weekprev">←</button><span>' + monday + ' — ' + dates[6] + '</span><button id="weeknext">→</button></div><div class="habit-week-scroll" style="overflow-x:auto"><table class="tbl habit-week">' + header + rows + '</table></div><div class="dim">Нажми: — → ✅ → ❌ → —.</div>';
 }
 function renderStats() {
   _acts = [];
@@ -114,8 +114,18 @@ function renderStats() {
     if (!h || d > today()) return;
     const old = statusMap(d)[h.id];
     const next = old === "yes" ? "no" : old === "no" ? null : "yes";
+    const body = document.getElementById("body");
+    const weekScroll = b.closest(".habit-week-scroll");
+    const top = body ? body.scrollTop : 0, left = weekScroll ? weekScroll.scrollLeft : 0;
     setStatus(h.id, next, d);
     b.textContent = next === "yes" ? "✅" : next === "no" ? "❌" : "—";
+    b.blur();
+    if (body) body.scrollTop = top;
+    if (weekScroll) weekScroll.scrollLeft = left;
+    requestAnimationFrame(() => {
+      if (body && body.isConnected) body.scrollTop = top;
+      if (weekScroll && weekScroll.isConnected) weekScroll.scrollLeft = left;
+    });
   });
 }
 
