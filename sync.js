@@ -37,7 +37,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
       S.sync.shopAt = shop.at || null;
     }
     await pullInbox();
-    await pushReviewOutbox();
+    try { await pushReviewOutbox(); S.sync.reviewErr = null; } catch (e) { S.sync.reviewErr = String(e && e.message || e).slice(0, 80); }
     S.sync.pullAt = Date.now();
     if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || screen === "set") render(); return; }
     const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
@@ -54,7 +54,9 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
 // токенов, личных настроек и истории привычек. Отдельный файл, backup.json не трогаем.
 async function pushReviewOutbox() {
   const notes = T("idea_inbox").map(n => ({id:n.id, text:String(n.text || "").slice(0,2000), created:n.created}));
-  const days = T("plan").filter(e => e && e.day && (e.inboxSrc || e.actual || e.progress !== undefined))
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 21);
+  const cutoffDay = isoDay(cutoff);
+  const days = T("plan").filter(e => e && e.day && e.day >= cutoffDay && (e.inboxSrc || e.actual || e.progress !== undefined))
     .map(e => ({id:e.id, day:e.day, title:String(e.title || "").slice(0,100),
       from:e.from, to:e.to, progress:e.progress == null ? null : e.progress,
       actual:!!e.actual, source:e.inboxSrc || null}));
@@ -76,12 +78,16 @@ async function pullInbox() {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
     T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
     // Календарь: создаём отдельный блок только для новых задач, не трогая существующие события.
-    // Без заданного времени — 20:00, один цикл 50/10; пользователь может перенести.
+    // Выбираем свободный вечерний час; не накладываем задачи друг на друга.
     if (!T("plan").some(e => e.inboxSrc === String(x.id))) {
       const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
       const cycles = match ? Math.min(4, +match[1]) : 1;
-      const from = 20 * 60;
-      T("plan").push({id: nextId("plan"), day, from, to: Math.min(1440, from + cycles * 60),
+      const duration = cycles * 60;
+      const occupied = T("plan").filter(e => e.day === day);
+      let from = 18 * 60;
+      while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
+      if (from + duration > 1440) from = 20 * 60; // запасной вариант, перенос доступен вручную
+      T("plan").push({id: nextId("plan"), day, from, to: Math.min(1440, from + duration),
         title: String(x.text).slice(0, 80), detail: "Задача AI-Control-Center · " + cycles + " × 50/10",
         color: "#4a78d6", sph: "p", nopomo: false, inboxSrc: String(x.id)});
     }
