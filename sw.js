@@ -1,6 +1,6 @@
 // Оффлайн-кэш: приложение открывается без интернета.
-const CACHE = "ritual-v46";
-const FILES = ["./", "./index.html", "./app.js?v=46", "./training.js?v=46", "./plan.js?v=46", "./pomo.js?v=46", "./work.js?v=46", "./sync.js?v=46", "./debts.js?v=46", "./spheres.js?v=46", "./tasks.js?v=46", "./stats.js?v=46", "./main.js?v=46", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "ritual-v47";
+const FILES = ["./", "./index.html", "./app.js?v=47", "./training.js?v=47", "./plan.js?v=47", "./pomo.js?v=47", "./work.js?v=47", "./sync.js?v=47", "./debts.js?v=47", "./spheres.js?v=47", "./tasks.js?v=47", "./stats.js?v=47", "./main.js?v=47", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
@@ -9,16 +9,17 @@ self.addEventListener("activate", e => {
     .then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET" || new URL(e.request.url).origin !== self.location.origin) return;   // GitHub API не кэшируем
-  e.respondWith(
-    caches.match(e.request).then(hit => {
-      const net = fetch(e.request).then(r => {
-        if (r && r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
-        return r;
-      }).catch(() => hit);
-      // HTML: prefer current deployment, fall back to offline cache.
-      if (e.request.mode === "navigate" || new URL(e.request.url).pathname.endsWith("/index.html")) return fetch(e.request).then(r => { if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone())); return r; }).catch(() => hit);
-      return hit || net;
-    })
-  );
+  if (e.request.method !== "GET" || new URL(e.request.url).origin !== self.location.origin) return;
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    try {
+      const response = await fetch(e.request, {cache:"no-store"});
+      if (response.ok) await cache.put(e.request, response.clone());
+      return response;
+    } catch (err) {
+      const cached = await caches.match(e.request);
+      if (cached) return cached;
+      throw err;
+    }
+  })());
 });
