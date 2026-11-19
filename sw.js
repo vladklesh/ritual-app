@@ -1,6 +1,6 @@
 // Оффлайн-кэш: приложение открывается без интернета.
-const CACHE = "ritual-v43";
-const FILES = ["./", "./index.html", "./app.js?v=43", "./training.js?v=43", "./plan.js?v=43", "./pomo.js?v=43", "./work.js?v=43", "./sync.js?v=43", "./debts.js?v=43", "./spheres.js?v=43", "./tasks.js?v=43", "./stats.js?v=43", "./main.js?v=43", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "ritual-v44";
+const FILES = ["./", "./index.html", "./app.js?v=44", "./training.js?v=44", "./plan.js?v=44", "./pomo.js?v=44", "./work.js?v=44", "./sync.js?v=44", "./debts.js?v=44", "./spheres.js?v=44", "./tasks.js?v=44", "./stats.js?v=44", "./main.js?v=44", "./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
@@ -16,6 +16,8 @@ self.addEventListener("fetch", e => {
         if (r && r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
         return r;
       }).catch(() => hit);
+      // HTML: prefer current deployment, fall back to offline cache.
+      if (e.request.mode === "navigate" || new URL(e.request.url).pathname.endsWith("/index.html")) return fetch(e.request).then(r => { if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone())); return r; }).catch(() => hit);
       return hit || net;
     })
   );
