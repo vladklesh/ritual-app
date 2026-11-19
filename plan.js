@@ -231,6 +231,7 @@ function openEv(id, day, from) {
   const g = i => w.querySelector("#" + i);
   let progress = e.progress, mb = isMb(e), color = e.color, sph = planSphereKey(e.sph || (CATS.find(c => c.c === e.color) || {}).k || "") || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
   const paint = () => {
+    w.querySelectorAll("[data-progress]").forEach(b => { b.style.outline = +b.dataset.progress === progress ? "2px solid #22c55e" : "none"; });
     g("enp").textContent = np ? "🚫" : "🍅";
     g("enpl").textContent = np ? "БЕЗ ПОМИДОРО" : "ПОМИДОРО ВКЛЮЧЕНО";
     w.querySelectorAll("[data-k]").forEach(b => b.classList.toggle("on", b.dataset.k === sph));
@@ -241,7 +242,8 @@ function openEv(id, day, from) {
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
   if (g("emst")) g("emst").onclick = () => { w.remove(); if (S.run) { screen = "run"; render(); } else startRun(); };
-  w.querySelectorAll("[data-progress]").forEach(b => b.onclick = () => { progress = +b.dataset.progress; paint(); });\n  g("enp").onclick = () => { np = !np; paint(); };
+  w.querySelectorAll("[data-progress]").forEach(b => b.onclick = () => { progress = +b.dataset.progress; paint(); });
+  g("enp").onclick = () => { np = !np; paint(); };
   w.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { color = b.dataset.c; sph = b.dataset.k; paint(); });
   w.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rule = b.dataset.r; paint(); });
   w.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
