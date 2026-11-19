@@ -42,7 +42,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
       }
       S.sync.shopErr = null;
     } catch (e) { S.sync.shopErr = String(e.message || e).slice(0,80); }
-    try { await pullInbox(); S.sync.inboxErr = null; }
+    try { await pullInbox(); daykNormalizePlan(); S.sync.inboxErr = null; }
     catch (e) { S.sync.inboxErr = String(e.message || e).slice(0,80); }
     try { await pushReviewOutbox(); S.sync.reviewErr = null; }
     catch (e) { S.sync.reviewErr = String(e.message || e).slice(0,80); }
@@ -64,10 +64,10 @@ async function pushReviewOutbox() {
   const notes = T("idea_inbox").map(n => ({id:n.id, text:String(n.text || "").slice(0,2000), created:n.created}));
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 21);
   const cutoffDay = isoDay(cutoff);
-  const days = T("plan").filter(e => e && e.day && e.day >= cutoffDay)
+  const days = T("plan").filter(e => e && !e.hiddenDuplicate && e.day && e.day >= cutoffDay)
     .map(e => ({id:e.id, day:e.day, title:String(e.title || "").slice(0,100),
       from:e.from, to:e.to, progress:e.progress == null ? null : e.progress,
-      actual:!!e.actual, source:e.inboxSrc || null, sphere:e.sph || null}));
+      actual:!!e.actual, source:e.inboxSrc || null, sphere:e.sph || null, bundle:e.bundleItems || null}));
   const byDay = {};
   days.forEach(e => {
     const d = byDay[e.day] || (byDay[e.day] = {day:e.day, planned:0, completed:0, partial:0, missed:0, unmarked:0, actualMinutes:0});
@@ -78,7 +78,10 @@ async function pushReviewOutbox() {
     else if (e.progress > 0) d.partial++;
     else d.unmarked++;
   });
-  const payload = JSON.stringify({version:2,updatedAt:new Date().toISOString(),notes,calendar:days,daily:Object.values(byDay).sort((a,b)=>a.day.localeCompare(b.day))});
+  const sleep = days.filter(e => /^(?:📝\\s*)?(?:сон|спал|sleep)\\b/i.test(String(e.title||"")))
+    .map(e => ({day:e.day,minutes:Math.max(0,(+e.to||0)-(+e.from||0)),actual:e.actual}))
+    .filter(e=>e.minutes>0);
+  const payload = JSON.stringify({version:3,updatedAt:new Date().toISOString(),notes,calendar:days,daily:Object.values(byDay).sort((a,b)=>a.day.localeCompare(b.day)),sleep});
   const fingerprint = payload.replace(/"updatedAt":"[^"]+"/,'"updatedAt":""');
   if (S.sync && S.sync.outboxFingerprint === fingerprint) return;
   await ghPut("outbox/dayk-review.json",payload,"DayK review "+today());
@@ -86,6 +89,55 @@ async function pushReviewOutbox() {
   S.sync.outboxAt = Date.now();
 }
 // Сферы задач: цвет и значок берём из календарной палитры CATS.
+// Сокращаем текст только в интерфейсе, исходный текст остаётся в GitHub.
+function daykTaskLabel(raw) {
+  const t = String(raw || "");
+  if (/пдд|билет|экзаменационн/i.test(t)) return "10 билетов ПДД";
+  if (/итог дня|прислать итог/i.test(t)) return "Итог дня";
+  if (/вейп|фильмов и игр/i.test(t)) return "Учёт привычек";
+  return t.replace(/^[^:]{1,24}:\\s*/, "").replace(/\\s*[·—–-]\\s*(?:🍅\\s*)?\\d+.*$/, "").slice(0,65).trim() || t.slice(0,65);
+}
+function daykNormalizePlan() {
+  const events = T("plan"), d = today();
+  let changed = false;
+  const byDay = new Map();
+  events.forEach(e => {
+    if (!e || e.actual || !e.inboxSrc || e.day < d || e.hiddenDuplicate) return;
+    if (/пдд|билет|экзаменационн/i.test(e.title || "")) {
+      const k = e.day;
+      if (!byDay.has(k)) byDay.set(k, []);
+      byDay.get(k).push(e);
+    }
+  });
+  byDay.forEach(list => {
+    if (!list.length) return;
+    list.sort((a,b) => (b.progress===100)-(a.progress===100) || a.from-b.from);
+    const keep = list[0];
+    if (keep.progress !== 100 && (keep.to-keep.from) !== 30) {keep.to=keep.from+30;changed=true;}
+    list.slice(1).forEach(e => {e.hiddenDuplicate=true;changed=true;});
+  });
+  // Короткие дела собираем в одну карточку с отдельными галочками.
+  const shortByDay = new Map();
+  events.forEach(e => {
+    if (!e || e.actual || !e.inboxSrc || e.day < d || e.hiddenDuplicate || e.bundleItems || e.progress===100) return;
+    if (/пдд|билет|экзаменационн/i.test(e.title || "")) return;
+    const m = String(e.title||"").match(/(\\d{1,2})\\s*мин/i);
+    if (!m || +m[1] > 15 || +m[1] < 1) return;
+    if (!shortByDay.has(e.day)) shortByDay.set(e.day,[]);
+    shortByDay.get(e.day).push(e);
+  });
+  shortByDay.forEach(list => {
+    if (list.length < 2) return;
+    list.sort((a,b)=>a.from-b.from);
+    const keep=list[0], group=list.slice(0,5);
+    keep.bundleItems=group.map(e=>({text:daykTaskLabel(e.title),done:false,source:e.inboxSrc}));
+    keep.title="Мелочи";
+    keep.to=Math.min(1440,keep.from+Math.max(15,group.reduce((n,e)=>n+(+(String(e.title).match(/(\\d{1,2})\\s*мин/i)||[])[1]||10),0)));
+    group.slice(1).forEach(e=>{e.hiddenDuplicate=true;});
+    changed=true;
+  });
+  if (changed) save();
+}
 function inboxSphere(x) {
   const key = String(x.sphere || x.sph || "").toLowerCase();
   const t = String(x.text || "").toLowerCase();
@@ -120,7 +172,7 @@ async function pullInbox() {
       let targetDay = day;
       const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
       const cycles = match ? Math.min(4, +match[1]) : 1;
-      const duration = cycles * 60;
+      const duration = /пдд|билет|экзаменационн/i.test(String(x.text)) ? 30 : cycles * 60;
       const occupied = T("plan").filter(e => e.day === day && Number.isFinite(e.from) && Number.isFinite(e.to));
       let from = 18 * 60;
       while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
@@ -149,7 +201,7 @@ function daykCarryForward() {
   const d = today(), events = T("plan");
   const groups = new Map();
   events.forEach(e => {
-    if (!e || !e.inboxSrc || e.actual) return;
+    if (!e || !e.inboxSrc || e.actual || e.hiddenDuplicate) return;
     const key = String(e.inboxSrc);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(e);
