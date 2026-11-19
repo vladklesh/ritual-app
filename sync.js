@@ -144,22 +144,33 @@ async function pullInbox() {
   S.inboxSeen = S.inboxSeen.slice(-500); S.sync.inboxAt = Date.now(); save();
   toast("📥 НОВЫЕ ЗАДАЧИ: " + pending.length + "\n" + pending.map(x => String(x.text).slice(0, 60)).join("\n"));
 }
-// Переносим максимум две незавершённые AI-задачи на сегодня, сохраняя историю.
+// Перенос только актуальных AI-задач: завершённые цепочки не возобновляем.
 function daykCarryForward() {
-  const d = today();
-  const past = T("plan").filter(e => e.inboxSrc && e.day < d && e.progress !== 100 &&
-    !T("plan").some(n => n.carryFrom === e.id));
-  const todayCount = T("plan").filter(e => e.day === d && e.carryFrom).length;
-  let added = 0;
-  for (const e of past.slice(-10)) {
+  const d = today(), events = T("plan");
+  const groups = new Map();
+  events.forEach(e => {
+    if (!e || !e.inboxSrc || e.actual) return;
+    const key = String(e.inboxSrc);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  });
+  const candidates = [];
+  groups.forEach(chain => {
+    chain.sort((a,b) => a.day.localeCompare(b.day) || (+a.id||0)-(+b.id||0));
+    if (chain.some(e => e.progress === 100) || chain.some(e => e.day >= d)) return;
+    const last = chain[chain.length-1];
+    if (last && last.day < d) candidates.push(last);
+  });
+  candidates.sort((a,b) => b.day.localeCompare(a.day));
+  let added = 0, todayCount = events.filter(e => e.day === d && e.carryFrom).length;
+  for (const e of candidates) {
     if (added + todayCount >= 2) break;
-    if (T("plan").some(n => n.day >= d && n.inboxSrc === e.inboxSrc)) continue;
-    const duration = Math.min(120,Math.max(30,(+e.to||0)-(+e.from||0)));
-    let from = 18 * 60;
-    const busy = T("plan").filter(n => n.day === d);
+    const duration = Math.min(120, Math.max(30, (+e.to||0)-(+e.from||0)));
+    let from = 18*60;
+    const busy = events.filter(n => n.day === d && Number.isFinite(n.from) && Number.isFinite(n.to));
     while (from + duration <= 1440 && busy.some(n => from < n.to && from + duration > n.from)) from += 30;
     if (from + duration > 1440) break;
-    T("plan").push({id:nextId("plan"),day:d,from,to:from+duration,title:e.title,
+    events.push({id:nextId("plan"),day:d,from,to:from+duration,title:e.title,
       detail:"Перенесено из "+e.day+" · "+String(e.detail||"").slice(0,180),
       color:e.color,sph:e.sph,nopomo:e.nopomo,inboxSrc:e.inboxSrc,carryFrom:e.id});
     added++;
