@@ -77,12 +77,27 @@ function spendByCat(yy) {
   const m = {}; T("spend_log").filter(r => r.day.startsWith(yy) && r.amount > 0).forEach(r => { const k = r.cat || "—"; m[k] = (m[k] || 0) + r.amount; });
   return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${CAT_ICON[k] || "▫️"} ${fmtN(v)}`).join(" · ");
 }
+let habitWeekOffset = 0;
+function renderHabitWeek() {
+  const d = dObj(today()), wd = (d.getDay() + 6) % 7;
+  const monday = addDays(today(), -wd + habitWeekOffset * 7);
+  const dates = Array.from({length: 7}, (_, i) => addDays(monday, i));
+  const hs = habits().filter(h => h.active !== 0 && ["morning", "daily", "evening", "night"].includes(h.kind) && !SPECIAL.includes(h.name) && h.name !== N_START);
+  const days = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const header = '<tr><th>ПРИВЫЧКА</th>' + dates.map((d,i) => '<th>' + days[i] + '<br>' + d.slice(8) + '</th>').join('') + '</tr>';
+  const rows = hs.map(h => '<tr><td>' + esc(h.name.split("\n")[0].slice(0,24)) + '</td>' + dates.map(d => {
+    if (d > today() || (h.on_date && h.on_date !== d) || (h.name === TRAINING && dObj(d).getDay() === 0)) return '<td>·</td>';
+    const st = statusMap(d)[h.id], sign = st === "yes" ? "✅" : st === "no" ? "❌" : "—";
+    return '<td><button class="habit-cell" data-h="' + h.id + '" data-d="' + d + '">' + sign + '</button></td>';
+  }).join('') + '</tr>').join('');
+  return '<div class="sec">ПРИВЫЧКИ · НЕДЕЛЯ</div><div class="acts"><button id="weekprev">←</button><span>' + monday + ' — ' + dates[6] + '</span><button id="weeknext">→</button></div><div style="overflow-x:auto"><table class="tbl habit-week">' + header + rows + '</table></div><div class="dim">Нажми: — → ✅ → ❌ → —.</div>';
+}
 function renderStats() {
   _acts = [];
   const rows = historyRows(), idx = logIndex();
   const hs = habits().filter(h => h.active !== 0 && h.kind !== "morning" && !SPECIAL.includes(h.name));
   const all = hs.map(h => { const s = habitStat(idx[h.id]); return s.yAll + s.nAll ? `• ${esc(h.name.split("\n")[0].slice(0, 34))}: ✅${s.yAll} ❌${s.nAll} · ${Math.round(s.yAll / (s.yAll + s.nAll) * 100)}% · РЕКОРД 🔥${s.best}${s.first ? " · С " + s.first.slice(0, 7) : ""}` : ""; }).filter(Boolean);
-  shell(`<div class="pre">${esc(statsText())}</div>
+  shell(`${renderHabitWeek()}<div class="pre">${esc(statsText())}</div>
     <div class="sec">ИСТОРИЯ ПО ГОДАМ (ЖМИ ГОД — ИТОГИ ПО МЕСЯЦАМ)</div>
     <table class="tbl"><tr><th>ГОД</th><th>СМЕН</th><th>СТАВКА+БОН.</th><th>ТРАТЫ</th><th>ИТОГО</th><th>💪</th></tr>` +
     rows.map(r => `<tr><td>${r.yy}</td><td>${r.n}</td><td>${fmtN(r.e + r.t)}</td><td>${fmtN(r.sp)}</td><td>${fmtN(r.net)}</td><td>${r.train}</td></tr>`).join("") + `</table>` +
@@ -92,6 +107,15 @@ function renderStats() {
     `<div class="sec">ТРАТЫ ПО КАТЕГОРИЯМ</div><div class="pre" style="font-size:15px">${rows.map(r => spendByCat(r.yy) ? r.yy + ": " + spendByCat(r.yy) : "").filter(Boolean).join("\n") || "—"}</div>` +
     B("📊💪 ТРЕНИРОВКИ", () => { screen = "tstats"; render(); }) + B("⬅", () => { screen = "set"; tab = "set"; render(); }));
   document.querySelectorAll("[data-a]").forEach(b => b.onclick = () => _acts[+b.dataset.a]());
+  document.getElementById("weekprev").onclick = () => { habitWeekOffset--; renderStats(); };
+  document.getElementById("weeknext").onclick = () => { habitWeekOffset++; renderStats(); };
+  document.querySelectorAll(".habit-cell").forEach(b => b.onclick = () => {
+    const h = habits().find(x => String(x.id) === b.dataset.h), d = b.dataset.d;
+    if (!h || d > today()) return;
+    const old = statusMap(d)[h.id];
+    setStatus(h.id, old === "yes" ? "no" : old === "no" ? null : "yes", d);
+    renderStats();
+  });
 }
 
 // ---------------------------------------------------------------- вечерняя сводка
