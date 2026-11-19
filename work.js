@@ -436,7 +436,7 @@ function wSchedule() {
     const booked = T("work_days").filter(w=>w.day===day);
     const tentative = tentativeRows().filter(w=>w.day===day);
     const title = booked.map(w=>'✓ '+wplace(w).name).concat(tentative.map(w=>'◌ '+w.name));
-    grid += '<button class="work-schedule-day" data-a="' + _acts.push(()=>wgo("scheduleDay",{ym,day})) + '"><strong>'+n+'</strong>'+title.map(x=>'<small>'+esc(x.slice(0,28))+'</small>').join('')+'</button>';
+    grid += '<button class="work-schedule-day" data-a="' + (_acts.push(()=>wgo("scheduleDay",{ym,day})) - 1) + '"><strong>'+n+'</strong>'+title.map(x=>'<small>'+esc(x.slice(0,28))+'</small>').join('')+'</button>';
   }
   grid += '</div>';
   W('<div class="title">🗓 ГРАФИК РАБОТЫ</div><div class="r2">'+
