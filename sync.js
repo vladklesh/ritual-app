@@ -123,16 +123,25 @@ async function pullInbox() {
       const occupied = T("plan").filter(e => e.day === day && Number.isFinite(e.from) && Number.isFinite(e.to));
       let from = 18 * 60;
       while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
-      if (from + duration > 1440) from = 20 * 60; // запасной вариант, перенос доступен вручную
+      if (from + duration > 1440) {
+        // Не перекрываем занятые интервалы: пробуем следующий день.
+        const next = new Date(day + "T12:00:00"); next.setDate(next.getDate() + 1);
+        const nextDay = isoDay(next);
+        const nextOccupied = T("plan").filter(e => e.day === nextDay && Number.isFinite(e.from) && Number.isFinite(e.to));
+        from = 18 * 60;
+        while (from + duration <= 1440 && nextOccupied.some(e => from < e.to && from + duration > e.from)) from += 30;
+        if (from + duration > 1440) return;
+        x = {...x, day:nextDay};
+      }
       const sphere = inboxSphere(x);
-      T("plan").push({id: nextId("plan"), day, from, to: Math.min(1440, from + duration),
+      T("plan").push({id: nextId("plan"), day: x.day || day, from, to: Math.min(1440, from + duration),
         title: String(x.text).slice(0, 80), detail: "Задача AI-Control-Center · " + cycles + " × 50/10",
         color: sphere.c, sph: sphere.k, nopomo: false, inboxSrc: String(x.id)});
     }
     S.inboxSeen.push(String(x.id));
   });
   S.inboxSeen = S.inboxSeen.slice(-500); S.sync.inboxAt = Date.now(); save();
-  toast("📥 НОВЫЕ ЗАДАЧИ ОТ CLAUDE: " + pending.length + "\n" + pending.map(x => String(x.text).slice(0, 60)).join("\n"));
+  toast("📥 НОВЫЕ ЗАДАЧИ: " + pending.length + "\n" + pending.map(x => String(x.text).slice(0, 60)).join("\n"));
 }
 function syncTick() {
   if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
