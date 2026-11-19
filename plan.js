@@ -103,7 +103,17 @@ function renderPlan() {
   const quick = '<div style="position:sticky;bottom:8px;z-index:20;display:flex;justify-content:flex-end;gap:10px;padding:5px 14px;pointer-events:none">' +
     '<button id="pq-plan" title="Добавить задачу" aria-label="Добавить задачу" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">➕</button>' +
     '<button id="pq-fact" title="Что делал" aria-label="Записать факт" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">📝</button></div>';
-  shell(head + body + quick);
+  const showReview = nowMin() >= 20 * 60 && !T("dayk_evening_done").some(x => x.day === today());
+  const review = showReview ? '<button id="dayk-review" class="btn">🌙 ИТОГ ДНЯ</button>' : "";
+  shell(head + review + body + quick);
+  const reviewBtn = document.getElementById("dayk-review");
+  if (reviewBtn) reviewBtn.onclick = () => {
+    const day = today(), pending = T("plan").filter(e => e.day === day && !e.actual && e.progress !== 100);
+    if (pending.length) { pday = day; pv = "1"; renderPlan(); toast("🌙 ОТМЕТЬ ВЫПОЛНЕНИЕ ЗАДАЧ В КАЛЕНДАРЕ"); return; }
+    T("dayk_evening_done").push({day,at:Date.now()}); save();
+    if (typeof pushReviewOutbox === "function" && S.gh && S.gh.token) pushReviewOutbox().then(() => save()).catch(() => {});
+    renderPlan(); toast("🌙 ИТОГ СОХРАНЁН");
+  };
   document.getElementById("pq-plan").onclick = () => openEv(null, pday, Math.min(1380, Math.floor(nowMin()/30)*30));
   document.getElementById("pq-fact").onclick = () => openFact();
   document.getElementById("body").classList.add("flexy");
