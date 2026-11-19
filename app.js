@@ -109,7 +109,7 @@ function dayItems(day) {                     // утренние шаги свё
 function dayItemsRaw(day) {
   day = day || today();
   const st = statusMap(day), wd = (new Date(day + "T12:00:00").getDay() + 6) % 7;
-  const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day));
+  const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day) && !/^ЗАВТРА РАБОТА(?:Ю|ЕТ)\?/i.test(h.name.trim()));
   const by = k => act.filter(h => h.kind === k);
   const sortRemind = (a, b) => ((a.remind ? 0 : 1) - (b.remind ? 0 : 1)) || String(a.remind || "").localeCompare(b.remind || "") || a.id - b.id;
   const mk = (h, at) => ({id: h.id, kind: h.kind, name: h.name, at, minutes: h.minutes || 0, status: st[h.id] || null, h});
