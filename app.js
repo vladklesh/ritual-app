@@ -423,14 +423,9 @@ function renderFail() {
 }
 function renderSet() {
   const last = S.lastExport ? new Date(S.lastExport).toLocaleDateString("ru-RU") : "НИКОГДА";
-  const nf = failedItems().length;
   shell(`<div class="setg">
-    <button class="btn" data-tab="fail">❗ ПРОВАЛЕННЫЕ${nf ? " · " + nf : ""}</button>
-    <button class="btn" id="tmr">⏱ ТАЙМЕР</button>
     <button class="btn" data-go="stats">📊 СТАТИСТИКА</button>
     <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
-    <button class="btn" data-go="edit">♾️ ПРИВЫЧКИ</button>
-    <button class="btn" data-go="why">🧠 ПРИЧИНЫ</button>
     <button class="btn" id="prim">🎧 ПРАЙМИНГ${S.priming ? " ✅" : ""}</button>
     <button class="btn" data-tab="debt">🫴🏻</button></div>
     <input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden><input type="file" id="file" accept=".json,application/json" hidden>
@@ -439,7 +434,6 @@ function renderSet() {
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = screen = b.dataset.tab; if (tab === "tasks") tv = {v: "main"}; if (tab === "debt") wv = {v: "debts"}; render(); });
   document.getElementById("ex").onclick = exportAll;
-  document.getElementById("tmr").onclick = timerMenu;
   document.getElementById("prim").onclick = () => document.getElementById("pfile").click();
   document.getElementById("pfile").onchange = ev => { const f = ev.target.files[0]; if (f) savePrimingFile(f).then(render); };
   document.getElementById("imp").onclick = () => document.getElementById("file").click();
