@@ -31,13 +31,19 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
   if (syncBusy || !S.gh || !S.gh.token) return;
   syncBusy = true; S.sync = S.sync || {};
   try {
-    const shop = await ghGetJson("shop.json");
-    if (shop && Array.isArray(shop.rows)) {                 // сервер — источник правды для shop_inc
-      S.db.shop_inc = shop.rows.map(r => ({ref: r.ref, day: r.day, amount: +r.amount || 0}));
-      S.sync.shopAt = shop.at || null;
-    }
-    await pullInbox();
-    try { await pushReviewOutbox(); S.sync.reviewErr = null; } catch (e) { S.sync.reviewErr = String(e && e.message || e).slice(0, 80); }
+    // Независимые операции: ошибка shop.json не блокирует задачи и отчёт.
+    try {
+      const shop = await ghGetJson("shop.json");
+      if (shop && Array.isArray(shop.rows)) {
+        S.db.shop_inc = shop.rows.map(r => ({ref:r.ref, day:r.day, amount:+r.amount || 0}));
+        S.sync.shopAt = shop.at || null;
+      }
+      S.sync.shopErr = null;
+    } catch (e) { S.sync.shopErr = String(e.message || e).slice(0,80); }
+    try { await pullInbox(); S.sync.inboxErr = null; }
+    catch (e) { S.sync.inboxErr = String(e.message || e).slice(0,80); }
+    try { await pushReviewOutbox(); S.sync.reviewErr = null; }
+    catch (e) { S.sync.reviewErr = String(e.message || e).slice(0,80); }
     S.sync.pullAt = Date.now();
     if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || screen === "set") render(); return; }
     const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
@@ -73,10 +79,14 @@ async function pullInbox() {
   if (!Array.isArray(box)) return;
   S.inboxSeen = S.inboxSeen || [];
   const fresh = box.filter(x => x && x.id && x.text && !S.inboxSeen.includes(String(x.id)));
-  if (!fresh.length) return;
-  fresh.forEach(x => {
+  // Восстанавливаем календарные блоки для ранее полученных задач, если их импортировали только в список.
+  box.filter(x => x && x.id && S.inboxSeen.includes(String(x.id)) && !T("plan").some(e => e.inboxSrc === String(x.id)))
+    .forEach(x => { const old = T("tasks").find(t => t.src === String(x.id)); if (old) S.inboxSeen = S.inboxSeen.filter(id => id !== String(x.id)); });
+  const pending = box.filter(x => x && x.id && x.text && !S.inboxSeen.includes(String(x.id)));
+  if (!pending.length) return;
+  pending.forEach(x => {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
-    T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
+    if (!T("tasks").some(t => t.src === String(x.id))) T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
     // Календарь: создаём отдельный блок только для новых задач, не трогая существующие события.
     // Выбираем свободный вечерний час; не накладываем задачи друг на друга.
     if (!T("plan").some(e => e.inboxSrc === String(x.id))) {
@@ -94,7 +104,7 @@ async function pullInbox() {
     S.inboxSeen.push(String(x.id));
   });
   S.inboxSeen = S.inboxSeen.slice(-500); save();
-  toast("📥 НОВЫЕ ЗАДАЧИ ОТ CLAUDE: " + fresh.length + "\n" + fresh.map(x => String(x.text).slice(0, 60)).join("\n"));
+  toast("📥 НОВЫЕ ЗАДАЧИ ОТ CLAUDE: " + pending.length + "\n" + pending.map(x => String(x.text).slice(0, 60)).join("\n"));
 }
 function syncTick() {
   if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
@@ -112,7 +122,7 @@ function syncLabel() {
 function syncSetup() {
   const on = S.gh && S.gh.token;
   const sy = S.sync || {}, shopT = sy.shopAt ? new Date(sy.shopAt).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—";
-  sheetOf(b => `<div class="stt">🔄 SHOP BOT → ПРИЛОЖЕНИЕ: ПРИ ОТКРЫТИИ\nКОПИЯ ДАННЫХ → ${GH_REPO}: РАЗ В ДЕНЬ\nСЕРВЕР ВЫЛОЖИЛ SHOP BOT: ${shopT}${sy.err ? "\n⚠ КОПИЯ: " + esc(sy.err) : ""}\n📤 ОТЧЁТ ДЛЯ АНАЛИЗА: ${sy.outboxAt ? new Date(sy.outboxAt).toLocaleString("ru-RU") : "ЕЩЁ НЕ ОТПРАВЛЕН"}${sy.reviewErr ? "\n⚠ ОТЧЁТ: " + esc(sy.reviewErr) : ""}</div>` +
+  sheetOf(b => `<div class="stt">🔄 SHOP BOT → ПРИЛОЖЕНИЕ: ПРИ ОТКРЫТИИ\nКОПИЯ ДАННЫХ → ${GH_REPO}: РАЗ В ДЕНЬ\nСЕРВЕР ВЫЛОЖИЛ SHOP BOT: ${shopT}${sy.err ? "\n⚠ КОПИЯ: " + esc(sy.err) : ""}\n📥 ЗАДАЧИ: ${sy.inboxErr ? "⚠ " + esc(sy.inboxErr) : (sy.pullAt ? "ПРОВЕРЕНО" : "НЕ ПРОВЕРЕНО")}\n📤 ОТЧЁТ ДЛЯ АНАЛИЗА: ${sy.outboxAt ? new Date(sy.outboxAt).toLocaleString("ru-RU") : "ЕЩЁ НЕ ОТПРАВЛЕН"}${sy.reviewErr ? "\n⚠ ОТЧЁТ: " + esc(sy.reviewErr) : ""}</div>` +
     (on ? b("🔄 СЕЙЧАС", () => { closeTop(); syncNow(true); }, "btn") : "") +
     (on ? b("📤 ОТПРАВИТЬ ОТЧЁТ", () => { closeTop(); S.sync = S.sync || {}; S.sync.outboxFingerprint = null; pushReviewOutbox().then(() => { save(); toast("📤 ОТЧЁТ ОТПРАВЛЕН"); }).catch(e => { S.sync.reviewErr = String(e.message || e).slice(0,80); save(); toast("⚠ ОТЧЁТ: " + S.sync.reviewErr); }); }, "btn") : "") +
     b(on ? "🔑 СМЕНИТЬ ТОКЕН" : "🔑 ВСТАВИТЬ ТОКЕН", () => { closeTop(); askText("ТОКЕН GITHUB (github_pat_…)", t => {
