@@ -16,12 +16,17 @@ const PHH = 52;
 const isMb = e => !!e && !e.work && (e.mb || (/🚿/.test(e.title || "") && /🍳/.test(e.title || "")));   // утренний блок в 📅
 const calendarEventLabel = e => {
   if (isMb(e)) return "Заряд⚡️Day";
+  if (e.bundleItems && e.bundleItems.length) return "Мелочи";
   if (!e.inboxSrc) return e.title;
-  let t = String(e.title || "").replace(/^[^\\p{L}\\p{N}]+/u, "");
-  const colon = t.indexOf(":");
-  if (colon > 0 && colon < 28) t = t.slice(colon + 1).trim();
-  t = t.replace(/\\s*[·—–-]\\s*(?:🍅\\s*)?\\d+\\s*(?:помидорк[^ ]*|мин|×[^ ]*)?.*$/i, "");
-  return t.trim() || String(e.title || "");
+  const raw = String(e.title || "");
+  if (/пдд|билет|экзаменационн/i.test(raw)) return "10 билетов ПДД";
+  if (/итог дня|прислать итог/i.test(raw)) return "Итог дня";
+  if (/вейп|фильмов и игр/i.test(raw)) return "Учёт привычек";
+  let t = raw.replace(/^[^\p{L}\p{N}]+/u, "");
+  t = t.replace(/^[^:]{1,26}:\s*/, "");
+  t = t.replace(/\s*[·—–-]\s*(?:🍅\s*)?\d+\s*(?:помидорк\S*|мин|×\S*)?.*$/i, "");
+  t = t.replace(/\s*\(?50\/10\)?/gi, "").replace(/\s*🍅\s*\d+\s*$/u,"");
+  return t.trim() || raw;
 };
 const progressColor = e => e.actual ? e.color : e.progress === 100 ? "#16a34a" : e.progress === 0 ? "#dc2626" : e.color;
 const progressRing = p => {
@@ -44,7 +49,7 @@ const addDays = (day, n) => { const d = dObj(day); d.setDate(d.getDate() + n); r
 const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
 const planOf = day => {                           // дело после полуночи (to > 1440) продолжается в следующем дне
   const prev = addDays(day, -1);
-  return T("plan").filter(e => e.day === day).concat(T("plan").filter(e => e.day === prev && e.to > 1440)
+  return T("plan").filter(e => e.day === day && !e.hiddenDuplicate).concat(T("plan").filter(e => e.day === prev && e.to > 1440 && !e.hiddenDuplicate)
     .map(e => Object.assign({}, e, {from: 0, to: e.to - 1440, spill: true})));
 };
 
