@@ -54,13 +54,13 @@ function tGone() {
   W(`<div class="pre">${esc(sphIcon(g) + " " + g.text + (g.detail ? "\n↳ " + g.detail : "\n↳ КОНКРЕТИКИ НЕТ"))}</div>
     <div class="r2">${B("✏️ НАЗВАНИЕ", () => askText("НОВОЕ НАЗВАНИЕ ЦЕЛИ?", t => { if (!t.trim()) return false; g.text = t.trim().slice(0, 300); save(); renderTasks(); return true; }, {val: g.text}))}
     ${B("📌 КОНКРЕТИКА", () => askText("КОНКРЕТИКА: ЧТО ИМЕННО ДОЛЖНО ПОЛУЧИТЬСЯ, КАК ИЗМЕРЮ, КАКИЕ ШАГИ?", t => { g.detail = t.trim() || null; save(); renderTasks(); return true; }, {val: g.detail || ""}))}</div>
-    <div class="cats">${SPHERES.map(s => B(s.ic, () => { g.sphere = s.k; save(); renderTasks(); })).join("")}</div>
+    <div class="cats">${BALANCE_SPHERES.map(s => B(s.ic, () => { g.sphere = s.k; save(); renderTasks(); })).join("")}</div>
     <div class="r2">${B("🗑", () => { if (confirm("УДАЛИТЬ ЦЕЛЬ?")) { S.db.goals = T("goals").filter(x => x !== g); save(); tgo("goals"); } })}${B("⬅", () => tgo("gedit", {top: tv.top, p: tv.p}))}</div>`);
 }
 // ---- сферы
 function tSpheres() {
   W(`<div class="title">🧭 КОЛЕСО БАЛАНСА</div><div class="balance-wheel">` +
-    BALANCE_SPHERES.map((s,i) => `<button class="balance-sector balance-sector-${i}" data-a="${_acts.push(() => tgo("sph", {k:s.k})) - 1}" aria-label="${s.nm}"><span>${s.ic}</span><small>${s.nm}</small></button>`).join("") +
+    BALANCE_SPHERES.map((s,i) => `<button class="balance-sector" style="--angle:${i * 360 / BALANCE_SPHERES.length}deg" data-a="${_acts.push(() => tgo("sph", {k:s.k})) - 1}" aria-label="${s.nm}"><span>${s.ic}</span><small>${s.nm}</small></button>`).join("") +
     `<div class="balance-center">МОЙ<br>БАЛАНС</div></div><div class="dim">Выбери сферу, чтобы увидеть цели для развития</div>` + B("⬅", () => tgo("main")));
 }
 function tSph() {
