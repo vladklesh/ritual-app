@@ -113,8 +113,9 @@ function renderStats() {
     const h = habits().find(x => String(x.id) === b.dataset.h), d = b.dataset.d;
     if (!h || d > today()) return;
     const old = statusMap(d)[h.id];
-    setStatus(h.id, old === "yes" ? "no" : old === "no" ? null : "yes", d);
-    renderStats();
+    const next = old === "yes" ? "no" : old === "no" ? null : "yes";
+    setStatus(h.id, next, d);
+    b.textContent = next === "yes" ? "✅" : next === "no" ? "❌" : "—";
   });
 }
 
