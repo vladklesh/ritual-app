@@ -14,7 +14,9 @@ function b64utf8(str) {                          // UTF-8 → base64 куска�
   return btoa(bin);
 }
 async function ghGetJson(path) {
-  const r = await fetch(ghUrl(path), {headers: Object.assign({Accept: "application/vnd.github.raw+json"}, ghHead()), cache: "no-store"});
+  let r;
+  try { r = await fetch(ghUrl(path), {headers: Object.assign({Accept: "application/vnd.github.raw+json"}, ghHead()), cache: "no-store"}); }
+  catch (e) { throw new Error("СЕТЬ GET " + path + ": " + (e.message || e)); }
   if (r.status === 404) return null;
   if (!r.ok) throw new Error("GET " + path + " " + r.status);
   return r.json();
