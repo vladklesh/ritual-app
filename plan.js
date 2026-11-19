@@ -23,7 +23,7 @@ const calendarEventLabel = e => {
   t = t.replace(/\\s*[·—–-]\\s*(?:🍅\\s*)?\\d+\\s*(?:помидорк[^ ]*|мин|×[^ ]*)?.*$/i, "");
   return t.trim() || String(e.title || "");
 };
-const progressColor = e => e.progress === 100 ? "#16a34a" : e.progress === 0 ? "#dc2626" : e.color;
+const progressColor = e => e.actual ? e.color : e.progress === 100 ? "#16a34a" : e.progress === 0 ? "#dc2626" : e.color;
 const progressRing = p => {
   if (![0,25,50,75,100].includes(p)) return "";
   const circumference = 2 * Math.PI * 9;
@@ -92,7 +92,7 @@ function renderPlan() {
         const depth = placed.filter(x => x.e.from < e.to && x.e.to > e.from).reduce((m, x) => Math.max(m, x.depth + 1), 0);
         placed.push({e, depth});
         const x0 = Math.min(depth * 20, 60), h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${progressColor(e)};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${progressRing(e.progress)} ${esc(calendarEventLabel(e))}</div>`;
+        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${progressColor(e)};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${e.actual ? "" : progressRing(e.progress)} ${esc(calendarEventLabel(e))}</div>`;
       }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
@@ -222,9 +222,9 @@ function openEv(id, day, from) {
     ${isMb(e) && e.day === today() && !S.runs.some(r => r.day === today()) ? '<button class="btn go" id="emst">▶ НАЧАТЬ</button>' : ""}
     <label class="ev-label">СОБЫТИЕ</label>
     <input id="et" placeholder="НАЗВАНИЕ" value="${esc(e.title)}">
-    <div style="display:flex;justify-content:space-between;gap:4px;padding:10px 0" id="evprogress">
+    ${e.actual ? "" : `<div style="display:flex;justify-content:space-between;gap:4px;padding:10px 0" id="evprogress">
       ${[0,25,50,75,100].map(p => '<button type="button" data-progress="'+p+'" aria-label="'+(p===0?'Не выполнено':p+' процентов')+'" style="flex:1;min-width:0;background:#252525;border-radius:10px;padding:7px 1px;color:white">'+progressRing(p)+'<div style="font-size:11px">'+(p===0?'✕':p+'%')+'</div></button>').join("")}
-    </div>
+    </div>`}
     <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
     <textarea id="edesc" rows="2" placeholder="ДЕТАЛИ, ЗАМЕТКИ (НЕОБЯЗАТЕЛЬНО)">${esc(e.detail || "")}</textarea>
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
@@ -278,7 +278,7 @@ function openEv(id, day, from) {
     let t = hm2m(g("eto").value);
     if (t === 0) t = 1440; else if (t == null || t <= f) t = Math.min(1440, f + 60);
     const nd = g("ed").value || e.day;
-    const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; x.progress = progress; };
+    const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; if (!x.actual) x.progress = progress; };
     pday = nd;
     if (!r0) {                                           // обычное дело (или становится повторяющимся)
       apply(e); e.day = nd;
