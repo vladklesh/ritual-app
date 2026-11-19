@@ -59,11 +59,12 @@ function tGone() {
 }
 // ---- сферы
 function tSpheres() {
-  W(`<div class="title">🧭 СФЕРЫ ЖИЗНИ</div><div class="cats">${SPHERES.map(s => B(s.ic, () => tgo("sph", {k: s.k}))).join("")}</div>` +
-    `<div class="dim">${SPHERES.map(s => s.ic + " " + s.nm).join("<br>")}</div>` + B("⬅", () => tgo("main")));
+  W(`<div class="title">🧭 КОЛЕСО БАЛАНСА</div><div class="balance-wheel">` +
+    BALANCE_SPHERES.map((s,i) => `<button class="balance-sector balance-sector-${i}" data-a="${_acts.push(() => tgo("sph", {k:s.k})) - 1}" aria-label="${s.nm}"><span>${s.ic}</span><small>${s.nm}</small></button>`).join("") +
+    `<div class="balance-center">МОЙ<br>БАЛАНС</div></div><div class="dim">Выбери сферу, чтобы увидеть цели для развития</div>` + B("⬅", () => tgo("main")));
 }
 function tSph() {
-  const s = SPHERES.find(x => x.k === tv.k), inf = SPH_INFO[tv.k], gl = T("goals").filter(g => g.sphere === tv.k).sort((a, b) => (a.pos || 0) - (b.pos || 0));
+  const s = BALANCE_SPHERES.find(x => x.k === tv.k), inf = SPH_INFO[tv.k], gl = T("goals").filter(g => s && s.keys.includes(g.sphere)).sort((a, b) => (a.pos || 0) - (b.pos || 0));
   const L = [`${s.ic} ${s.nm}`, inf.intro, "", "ЧТО ВАЖНО УЧЕСТЬ:", ...inf.qs.map(q => "• " + q), "", gl.length ? "ЦЕЛИ:" : "ЦЕЛЕЙ ПОКА НЕТ. ✏️ В 🎯 — НАЗНАЧИТЬ СФЕРУ", ...gl.sort(gsort).map(g => { const s = goalSplit(g); return `${g.done_on ? "✅" : "⬜"} ${s.t.slice(0, 90)}${s.d ? "\n   " + s.d : ""}`; })];
   W(`<div class="pre">${esc(L.join("\n"))}</div>` + B("⬅", () => tgo("spheres")));
 }
