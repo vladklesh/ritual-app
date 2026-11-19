@@ -1,20 +1,29 @@
 "use strict";
 // ================================================================== ПЛАНИРОВЩИК (как Google Календарь, но внутри приложения)
-const PCOL = ["#2f8f5b", "#d17a2a", "#c04a47", "#4a78d6", "#b59a2e", "#8a5cc2", "#6b6b6b"];
+const PCOL = ["#16845b", "#d97721", "#c13e58", "#3975e5", "#b79a20", "#8953ce", "#64748b"];
 // сферы жизни в календаре: цвет + значок
 const CATS = [
-  {k:"h",ic:"💪",nm:"ЗДОРОВЬЕ",c:"#2f8f5b"},
-  {k:"p",ic:"📈",nm:"ЛИЧНОСТНЫЙ РОСТ",c:"#4a78d6"},
-  {k:"f",ic:"💰",nm:"КАПИТАЛ",c:"#c04a47"},
-  {k:"l",ic:"☀️",nm:"ЯРКОСТЬ ЖИЗНИ",c:"#b59a2e"},
-  {k:"r",ic:"❤️",nm:"ОТНОШЕНИЯ И ОКРУЖЕНИЕ",c:"#8a5cc2"},
-  {k:"e",ic:"🏠",nm:"СРЕДА И БЫТ",c:"#6b6b6b"},
-  {k:"j",ic:"💼",nm:"РАБОТА",c:"#d17a2a"}
+  {k:"h",ic:"💪",nm:"ЗДОРОВЬЕ",c:"#16845b"},
+  {k:"p",ic:"📈",nm:"ЛИЧНОСТНЫЙ РОСТ",c:"#3975e5"},
+  {k:"f",ic:"💰",nm:"КАПИТАЛ",c:"#c13e58"},
+  {k:"l",ic:"☀️",nm:"ЯРКОСТЬ ЖИЗНИ",c:"#b79a20"},
+  {k:"r",ic:"❤️",nm:"ОТНОШЕНИЯ И ОКРУЖЕНИЕ",c:"#8953ce"},
+  {k:"e",ic:"🏠",nm:"СРЕДА И БЫТ",c:"#64748b"},
+  {k:"j",ic:"💼",nm:"РАБОТА",c:"#d97721"}
 ];
 const planSphereKey = k => ({m:"p",a:"l",c:"r",w:"j"}[k] || k);
 const PHH = 52;
 const isMb = e => !!e && !e.work && (e.mb || (/🚿/.test(e.title || "") && /🍳/.test(e.title || "")));   // утренний блок в 📅
 const calendarEventLabel = e => isMb(e) ? "Заряд⚡️Day" : e.title;
+const progressColor = e => e.progress === 100 ? "#16a34a" : e.progress === 0 ? "#dc2626" : e.color;
+const progressRing = p => {
+  if (![0,25,50,75,100].includes(p)) return "";
+  const circumference = 2 * Math.PI * 9;
+  return '<svg width="24" height="24" viewBox="0 0 24 24" style="vertical-align:middle;flex-shrink:0" aria-label="'+p+'% выполнено">' +
+    '<circle cx="12" cy="12" r="9" stroke="#a1a1aa" stroke-width="4" fill="#18181b"/>' +
+    '<circle cx="12" cy="12" r="9" stroke="#22c55e" stroke-width="4" fill="none" stroke-dasharray="'+(circumference*p/100)+' '+circumference+'" transform="rotate(-90 12 12)"/>' +
+    '</svg>';
+};
 const mbEvent = day => planOf(day).find(e => !e.spill && isMb(e)) || null;                                   // высота часа, px
 const WD = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
 const MON = ["ЯНВАРЬ", "ФЕВРАЛЬ", "МАРТ", "АПРЕЛЬ", "МАЙ", "ИЮНЬ", "ИЮЛЬ", "АВГУСТ", "СЕНТЯБРЬ", "ОКТЯБРЬ", "НОЯБРЬ", "ДЕКАБРЬ"];
@@ -61,7 +70,7 @@ function renderPlan() {
     const start = addDays(isoDay(first), -((first.getDay() + 6) % 7)), cells = [];
     for (let k = 0; k < 42; k++) {
       const day = addDays(start, k), ev = planOf(day), out = dObj(day).getMonth() !== first.getMonth();
-      cells.push(`<button class="mc${out ? " out" : ""}${day === today() ? " td" : ""}" data-d="${day}">${+day.slice(8)}<br>${ev.slice(0, 4).map(e => `<i style="background:${e.color}"></i>`).join("")}</button>`);
+      cells.push(`<button class="mc${out ? " out" : ""}${day === today() ? " td" : ""}" data-d="${day}">${+day.slice(8)}<br>${ev.slice(0, 4).map(e => `<i style="background:${progressColor(e)}"></i>`).join("")}</button>`);
     }
     body = `<div class="pgrid"><div class="pmon">${["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"].map(w => `<div class="wd">${w}</div>`).join("")}${cells.join("")}</div></div>`;
   } else {
@@ -75,7 +84,7 @@ function renderPlan() {
         const depth = placed.filter(x => x.e.from < e.to && x.e.to > e.from).reduce((m, x) => Math.max(m, x.depth + 1), 0);
         placed.push({e, depth});
         const x0 = Math.min(depth * 20, 60), h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${e.color};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${esc(calendarEventLabel(e))}</div>`;
+        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${progressColor(e)};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${progressRing(e.progress)} ${esc(calendarEventLabel(e))}</div>`;
       }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
@@ -205,6 +214,9 @@ function openEv(id, day, from) {
     ${isMb(e) && e.day === today() && !S.runs.some(r => r.day === today()) ? '<button class="btn go" id="emst">▶ НАЧАТЬ</button>' : ""}
     <label class="ev-label">СОБЫТИЕ</label>
     <input id="et" placeholder="НАЗВАНИЕ" value="${esc(e.title)}">
+    <div style="display:flex;justify-content:space-between;gap:4px;padding:10px 0" id="evprogress">
+      ${[0,25,50,75,100].map(p => '<button type="button" data-progress="'+p+'" aria-label="'+(p===0?'Не выполнено':p+' процентов')+'" style="flex:1;min-width:0;background:#252525;border-radius:10px;padding:7px 1px;color:white">'+progressRing(p)+'<div style="font-size:11px">'+(p===0?'✕':p+'%')+'</div></button>').join("")}
+    </div>
     <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
     <textarea id="edesc" rows="2" placeholder="ДЕТАЛИ, ЗАМЕТКИ (НЕОБЯЗАТЕЛЬНО)">${esc(e.detail || "")}</textarea>
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
@@ -217,7 +229,7 @@ function openEv(id, day, from) {
     </details><div class="acts">${id ? '<button id="edel">🗑</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
   document.body.appendChild(w);
   const g = i => w.querySelector("#" + i);
-  let mb = isMb(e), color = e.color, sph = planSphereKey(e.sph || (CATS.find(c => c.c === e.color) || {}).k || "") || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
+  let progress = e.progress, mb = isMb(e), color = e.color, sph = planSphereKey(e.sph || (CATS.find(c => c.c === e.color) || {}).k || "") || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
   const paint = () => {
     g("enp").textContent = np ? "🚫" : "🍅";
     g("enpl").textContent = np ? "БЕЗ ПОМИДОРО" : "ПОМИДОРО ВКЛЮЧЕНО";
@@ -229,7 +241,7 @@ function openEv(id, day, from) {
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
   if (g("emst")) g("emst").onclick = () => { w.remove(); if (S.run) { screen = "run"; render(); } else startRun(); };
-  g("enp").onclick = () => { np = !np; paint(); };
+  w.querySelectorAll("[data-progress]").forEach(b => b.onclick = () => { progress = +b.dataset.progress; paint(); });\n  g("enp").onclick = () => { np = !np; paint(); };
   w.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { color = b.dataset.c; sph = b.dataset.k; paint(); });
   w.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rule = b.dataset.r; paint(); });
   w.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
@@ -256,7 +268,7 @@ function openEv(id, day, from) {
     let t = hm2m(g("eto").value);
     if (t === 0) t = 1440; else if (t == null || t <= f) t = Math.min(1440, f + 60);
     const nd = g("ed").value || e.day;
-    const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; };
+    const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; x.progress = progress; };
     pday = nd;
     if (!r0) {                                           // обычное дело (или становится повторяющимся)
       apply(e); e.day = nd;
