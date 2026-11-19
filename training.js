@@ -82,7 +82,7 @@ function createWeightFlags(t) {
 function finishTraining(skipped) {
   const t = S.train; if (!t) return;
   const h = trainHabit();
-  if (skipped) { if (h) setStatus(h.id, "no"); }
+  if (skipped) { /* Незавершённая тренировка остаётся без новой отметки. */ }
   else {
     if (h) { setStatus(h.id, "yes"); if (t.forced) T("min_log").push({habit_id: h.id, day: today()}); }
     if (!t.minimal) createWeightFlags(t);
@@ -98,11 +98,11 @@ function finishTraining(skipped) {
     return;
   }
   screen = "day"; tab = "day"; render();
-  if (skipped && h) askReason({id: h.id, name: h.name, h});
+  // Причины прерывания не запрашиваем.
 }
 function renderTrain() {
   $app.innerHTML = `<button class="x" id="x">⏭️</button><div id="tv" class="scroll" style="display:flex;flex-direction:column"></div>`;
-  document.getElementById("x").onclick = () => { if (confirm("ПРОПУСТИТЬ ТРЕНИРОВКУ?")) finishTraining(true); };
+  document.getElementById("x").onclick = () => { if (confirm("ЗАВЕРШИТЬ ТРЕНИРОВКУ? ВЫПОЛНЕННЫЕ ПОДХОДЫ СОХРАНЯТСЯ.")) finishTraining(true); };
   paintTrain();
 }
 function tickTrain() {
