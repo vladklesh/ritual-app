@@ -26,10 +26,32 @@ function renderTasks() {
   ({...TEXT, main: tMain, goals: tGoals, glist: tGlist, gedit: tGedit, gone: tGone, spheres: tSpheres, sph: tSph, projects: tProjects, tasks: tTasks}[tv.v] || tMain)();
 }
 function tMain() {
-  const done = goalsAll().filter(g => g.done_on).length, open = T("tasks").filter(t => !t.done).length;
-  W(`<div class="title">🧳</div>` + B(`🎯 ЦЕЛИ · ТОП-100: ${done}/${goalsAll().length}`, () => tgo("goals")) + B("🧭 СФЕРЫ ЖИЗНИ", () => tgo("spheres")) +
-    B("🧳 ПРОЕКТЫ", () => tgo("projects")) + B(`✅ ЗАДАЧИ${open ? " · " + open : ""}`, () => tgo("tasks")) +
-    B("🗓 ИТОГИ МЕСЯЦА", reviewStart) + B("📜 ПРОШЛЫЕ ИТОГИ", () => tgo("revs")) + B("♾️ ПРИВЫЧКИ", () => { screen = "edit"; render(); }));
+  // Простая офлайн-корзина идей. Старые цели, проекты и задачи сохраняются.
+  const notes = T("idea_inbox");
+  W('<div class="title">📝 ЗАМЕТКИ</div><div class="dim">ЗАПИСЫВАЙ ИДЕИ БЕЗ КАТЕГОРИЙ · НЕОБРАБОТАННОЕ НЕ УДАЛЯЕТСЯ</div>' +
+    '<textarea id="idea-text" rows="4" placeholder="Напиши идею или задачу своими словами"></textarea>' +
+    '<button class="btn" id="idea-add">➕ СОХРАНИТЬ</button>' +
+    notes.map((n,i) => '<div class="gl" style="text-align:left;white-space:pre-wrap;overflow-wrap:anywhere">' +
+      esc(n.text) + '<div style="margin-top:8px;display:flex;gap:8px"><button data-copy="'+i+'">📋 КОПИРОВАТЬ</button>' +
+      '<button data-done="'+i+'">✅ РАЗОБРАНО</button></div></div>').join('') +
+    '<details style="margin-top:20px"><summary>📦 СТАРЫЕ РАЗДЕЛЫ</summary><div id="legacy-links"></div></details>');
+  document.getElementById("idea-add").onclick = () => {
+    const t = document.getElementById("idea-text").value.trim();
+    if (!t) return;
+    notes.unshift({id:Date.now(),text:t,created:today()}); save(); renderTasks();
+  };
+  document.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => {
+    const n=notes[+b.dataset.copy]; if(n && navigator.clipboard) navigator.clipboard.writeText(n.text);
+  });
+  document.querySelectorAll("[data-done]").forEach(b => b.onclick = () => {
+    const i=+b.dataset.done;
+    if (!confirm("ИДЕЯ УЖЕ ПЕРЕНЕСЕНА В ПЛАН?")) return;
+    const [n]=notes.splice(i,1); T("idea_archive").push({...n,archived:today()}); save(); renderTasks();
+  });
+  document.getElementById("legacy-links").innerHTML =
+    '<button class="btn" id="oldgoals">🎯 ЦЕЛИ</button><button class="btn" id="oldtasks">✅ ЗАДАЧИ</button>';
+  document.getElementById("oldgoals").onclick=()=>tgo("goals");
+  document.getElementById("oldtasks").onclick=()=>tgo("tasks");
 }
 // ---- цели
 function tGoals() {
