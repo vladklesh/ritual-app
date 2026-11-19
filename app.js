@@ -102,7 +102,7 @@ function dayItems(day) {                     // утренние шаги свё
     if (i.kind !== "morning" || SPECIAL.includes(i.name)) return out.push(i);
     if (i !== steps[0]) return;
     const left = steps.filter(s => !s.status), ev = typeof mbEvent === "function" ? mbEvent(day || today()) : null;
-    out.push({typ: "mb", id: "mb", kind: "morning", name: ev ? ev.title : "УТРЕННИЙ БЛОК", at: ev ? m2hm(ev.from) : "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
+    out.push({typ: "mb", id: "mb", kind: "morning", name: "Заряд⚡️Day", at: ev ? m2hm(ev.from) : "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
   });
   return out;
 }
