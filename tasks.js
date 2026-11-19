@@ -25,16 +25,29 @@ function renderTasks() {
   _acts = [];
   ({...TEXT, main: tMain, goals: tGoals, glist: tGlist, gedit: tGedit, gone: tGone, spheres: tSpheres, sph: tSph, projects: tProjects, tasks: tTasks}[tv.v] || tMain)();
 }
+function daykEveningSummary() {
+  const day = today(), events = T("plan").filter(e => e.day === day);
+  const planned = events.filter(e => !e.actual);
+  const done = planned.filter(e => e.progress === 100).length;
+  const partial = planned.filter(e => e.progress > 0 && e.progress < 100).length;
+  const missed = planned.filter(e => e.progress === 0).length;
+  const pending = planned.filter(e => e.progress == null).length;
+  const minutes = events.filter(e => e.actual).reduce((n,e) => n + Math.max(0,(+e.to||0)-(+e.from||0)),0);
+  const unfinished = planned.filter(e => e.progress !== 100).slice(0,5).map(e => "• " + String(e.title || "").slice(0,65)).join("\\n");
+  return "ИТОГ " + day + "\\nГотово: " + done + " | Частично: " + partial + " | Не сделано: " + missed + " | Без отметки: " + pending +
+    "\\nФакт: " + Math.round(minutes/60*10)/10 + " ч" + (unfinished ? "\\nОсталось:\\n" + unfinished : "");
+}
 function tMain() {
   // Простая офлайн-корзина идей. Старые цели, проекты и задачи сохраняются.
   const notes = T("idea_inbox");
-  W('<div class="title">📝 ЗАМЕТКИ</div><div class="dim">ЗАПИСЫВАЙ ИДЕИ БЕЗ КАТЕГОРИЙ · НЕОБРАБОТАННОЕ НЕ УДАЛЯЕТСЯ</div>' +
+  W('<div class="title">📝 ЗАМЕТКИ</div><button class="btn" id="dayk-evening">🌙 ИТОГ ДНЯ</button><div class="dim">ЗАПИСЫВАЙ ИДЕИ БЕЗ КАТЕГОРИЙ · НЕОБРАБОТАННОЕ НЕ УДАЛЯЕТСЯ</div>' +
     '<textarea id="idea-text" rows="4" placeholder="Напиши идею или задачу своими словами"></textarea>' +
     '<button class="btn" id="idea-add">➕ СОХРАНИТЬ</button>' +
     notes.map((n,i) => '<div class="gl" style="text-align:left;white-space:pre-wrap;overflow-wrap:anywhere">' +
       esc(n.text) + '<div style="margin-top:8px;display:flex;gap:8px"><button data-copy="'+i+'">📋 КОПИРОВАТЬ</button>' +
       '<button data-done="'+i+'">✅ РАЗОБРАНО</button></div></div>').join('') +
     '<details style="margin-top:20px"><summary>📦 СТАРЫЕ РАЗДЕЛЫ</summary><div id="legacy-links"></div></details>');
+  document.getElementById("dayk-evening").onclick = () => { const msg = daykEveningSummary(); if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(msg).then(() => toast("🌙 ИТОГ СКОПИРОВАН — ПРИШЛИ В ЧАТ")).catch(() => alert(msg)); else alert(msg); };
   document.getElementById("idea-add").onclick = () => {
     const t = document.getElementById("idea-text").value.trim();
     if (!t) return;
