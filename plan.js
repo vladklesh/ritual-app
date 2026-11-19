@@ -75,7 +75,7 @@ function renderPlan() {
         const depth = placed.filter(x => x.e.from < e.to && x.e.to > e.from).reduce((m, x) => Math.max(m, x.depth + 1), 0);
         placed.push({e, depth});
         const x0 = Math.min(depth * 20, 60), h = Math.max(16, (e.to - e.from) / 60 * PHH - 1);
-        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${e.color};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${e.rep ? "🔁 " : ""}${esc(calendarEventLabel(e))}${big && h > 40 ? `<br><small>${m2hm(e.from)}–${m2hm(e.to)}</small>` : ""}</div>`;
+        return `<div class="ev${e.spill ? " sp" : ""}${depth ? " top" : ""}" data-id="${e.id}" style="top:${e.from / 60 * PHH}px;height:${h}px;left:calc(${x0}% + 1px);width:calc(${88 - x0}% - 2px);background:${e.color};z-index:${depth + 1};${big ? "font-size:14px" : ""}">${esc(calendarEventLabel(e))}</div>`;
       }).join("");
       const now = d === today() ? `<div class="nowl" id="nowl" style="top:${nowMin() / 60 * PHH}px"></div>` : "";
       return `<div class="pcol" data-d="${d}" style="background-size:100% ${PHH}px">${evs}${now}</div>`;
