@@ -292,7 +292,8 @@ function openEv(id, day, from) {
     if (!title) { g("et").focus(); return; }
     const f = hm2m(g("ef").value); if (f == null) return;
     let t = hm2m(g("eto").value);
-    if (t === 0) t = 1440; else if (t == null || t <= f) t = Math.min(1440, f + 60);
+    if (t == null) return;
+    if (t <= f) t = e.actual ? t + 1440 : (t === 0 ? 1440 : Math.min(1440, f + 60));
     const nd = g("ed").value || e.day;
     const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; if (!x.actual) x.progress = progress; };
     pday = nd;
