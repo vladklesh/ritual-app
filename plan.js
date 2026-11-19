@@ -82,7 +82,13 @@ function renderPlan() {
     }).join("");
     body = dh + `<div class="pgrid" id="pg"><div class="pin" style="height:${24 * PHH}px"><div class="gut">${hours}</div><div class="pcols" style="grid-template-columns:repeat(${n},1fr)">${cols}</div></div></div>`;
   }
-  shell(head + body);
+  // Быстрые действия: план и фактический журнал, без изменения старых записей.
+  const quick = '<div style="position:sticky;bottom:8px;z-index:20;display:flex;justify-content:flex-end;gap:10px;padding:5px 14px;pointer-events:none">' +
+    '<button id="pq-plan" title="Добавить задачу" aria-label="Добавить задачу" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">➕</button>' +
+    '<button id="pq-fact" title="Что делал" aria-label="Записать факт" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">📝</button></div>';
+  shell(head + body + quick);
+  document.getElementById("pq-plan").onclick = () => openEv(null, pday, Math.min(1380, Math.floor(nowMin()/30)*30));
+  document.getElementById("pq-fact").onclick = () => openFact();
   document.getElementById("body").classList.add("flexy");
   const step = k => {
     if (month) { const d = dObj(pday); d.setDate(1); d.setMonth(d.getMonth() + k); pday = isoDay(d); }
@@ -108,6 +114,32 @@ function renderPlan() {
       openEv(null, col.dataset.d, m);
     };
   }
+}
+
+// Краткая запись факта: отдельное событие, чтобы не подменять план выполнением.
+function openFact() {
+  const w = document.createElement("div"); w.className = "sheet";
+  const time = m2hm(Math.floor(nowMin()/15)*15);
+  w.innerHTML = '<div style="max-height:55vh;overflow:auto"><div class="stt">📝 ЧТО ДЕЛАЛ</div>' +
+    '<input id="qtitle" placeholder="ЧТО ДЕЛАЛ?" maxlength="80">' +
+    '<div class="r2"><input id="qday" type="date" value="'+today()+'"><input id="qtime" type="time" value="'+time+'"></div>' +
+    '<div class="ev-spheres" id="qsphere">'+CATS.map(c => '<button data-k="'+c.k+'" title="'+c.nm+'" aria-label="'+c.nm+'" style="--sphere-color:'+c.c+'">'+c.ic+'</button>').join("")+'</div>' +
+    '<div class="acts"><button id="qclose">✕</button><button id="qsave">✅</button></div></div>';
+  document.body.appendChild(w);
+  let sphere = CATS[0];
+  const paint = () => w.querySelectorAll("[data-k]").forEach(b => b.classList.toggle("on", b.dataset.k === sphere.k));
+  paint();
+  w.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { sphere = CATS.find(c=>c.k===b.dataset.k) || sphere; paint(); });
+  w.onclick = ev => { if (ev.target === w) w.remove(); };
+  w.querySelector("#qclose").onclick = () => w.remove();
+  w.querySelector("#qsave").onclick = () => {
+    const title = w.querySelector("#qtitle").value.trim(), from = hm2m(w.querySelector("#qtime").value);
+    if (!title || from == null) return;
+    const day = w.querySelector("#qday").value || today();
+    T("plan").push({id:nextId("plan"),day,from,to:Math.min(1440,from+15),title:"📝 "+title,
+      detail:"Фактически выполнено",color:sphere.c,sph:sphere.k,nopomo:true,actual:true});
+    save(); w.remove(); pday=day; renderPlan();
+  };
 }
 
 // ---------------------------------------------------------------- повторы: правило в plan_rep, дела создаются на 60 дней вперёд
@@ -173,7 +205,7 @@ function openEv(id, day, from) {
     ${isMb(e) && e.day === today() && !S.runs.some(r => r.day === today()) ? '<button class="btn go" id="emst">▶ НАЧАТЬ</button>' : ""}
     <label class="ev-label">СОБЫТИЕ</label>
     <input id="et" placeholder="НАЗВАНИЕ" value="${esc(e.title)}">
-    <label class="ev-label">ОПИСАНИЕ</label>
+    <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
     <textarea id="edesc" rows="2" placeholder="ДЕТАЛИ, ЗАМЕТКИ (НЕОБЯЗАТЕЛЬНО)">${esc(e.detail || "")}</textarea>
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
     <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}"><input type="time" id="eto" value="${e.to >= 1440 ? "23:59" : m2hm(e.to)}"></div>
@@ -182,7 +214,7 @@ function openEv(id, day, from) {
     <div class="dim" id="ecn"></div>
     <div class="chips" id="erep">${REPS.map(x => `<button data-r="${x[0]}">${x[1]}</button>`).join("")}</div>
     <div class="ev-flags"><button id="enp" aria-label="Помодоро" title="Помодоро">🍅</button><span id="enpl" class="dim"></span></div>
-    <div class="acts">${id ? '<button id="edel">🗑</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
+    </details><div class="acts">${id ? '<button id="edel">🗑</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
   document.body.appendChild(w);
   const g = i => w.querySelector("#" + i);
   let mb = isMb(e), color = e.color, sph = planSphereKey(e.sph || (CATS.find(c => c.c === e.color) || {}).k || "") || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
