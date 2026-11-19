@@ -68,7 +68,17 @@ async function pushReviewOutbox() {
     .map(e => ({id:e.id, day:e.day, title:String(e.title || "").slice(0,100),
       from:e.from, to:e.to, progress:e.progress == null ? null : e.progress,
       actual:!!e.actual, source:e.inboxSrc || null, sphere:e.sph || null}));
-  const payload = JSON.stringify({version:1,updatedAt:new Date().toISOString(),notes,calendar:days});
+  const byDay = {};
+  days.forEach(e => {
+    const d = byDay[e.day] || (byDay[e.day] = {day:e.day, planned:0, completed:0, partial:0, missed:0, unmarked:0, actualMinutes:0});
+    if (e.actual) { d.actualMinutes += Math.max(0, (+e.to || 0) - (+e.from || 0)); return; }
+    d.planned++;
+    if (e.progress === 100) d.completed++;
+    else if (e.progress === 0) d.missed++;
+    else if (e.progress > 0) d.partial++;
+    else d.unmarked++;
+  });
+  const payload = JSON.stringify({version:2,updatedAt:new Date().toISOString(),notes,calendar:days,daily:Object.values(byDay).sort((a,b)=>a.day.localeCompare(b.day))});
   const fingerprint = payload.replace(/"updatedAt":"[^"]+"/,'"updatedAt":""');
   if (S.sync && S.sync.outboxFingerprint === fingerprint) return;
   await ghPut("outbox/dayk-review.json",payload,"DayK review "+today());
