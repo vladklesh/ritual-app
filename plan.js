@@ -109,7 +109,7 @@ function renderPlan() {
   const reviewBtn = document.getElementById("dayk-review");
   if (reviewBtn) reviewBtn.onclick = () => {
     const day = today(), pending = T("plan").filter(e => e.day === day && !e.actual && e.progress !== 100);
-    if (pending.length) { pday = day; pv = "1"; renderPlan(); toast("🌙 ОТМЕТЬ ВЫПОЛНЕНИЕ ЗАДАЧ В КАЛЕНДАРЕ"); return; }
+    if (pending.length && !confirm("ЕСТЬ " + pending.length + " НЕЗАВЕРШЁННЫХ ИЛИ НЕОТМЕЧЕННЫХ ЗАДАЧ. СОХРАНИТЬ ИТОГ ДНЯ?")) { pday = day; pv = "1"; renderPlan(); return; }
     T("dayk_evening_done").push({day,at:Date.now()}); save();
     if (typeof pushReviewOutbox === "function" && S.gh && S.gh.token) pushReviewOutbox().then(() => save()).catch(() => {});
     renderPlan(); toast("🌙 ИТОГ СОХРАНЁН");
