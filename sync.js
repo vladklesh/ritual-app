@@ -112,8 +112,9 @@ function syncLabel() {
 function syncSetup() {
   const on = S.gh && S.gh.token;
   const sy = S.sync || {}, shopT = sy.shopAt ? new Date(sy.shopAt).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—";
-  sheetOf(b => `<div class="stt">🔄 SHOP BOT → ПРИЛОЖЕНИЕ: ПРИ ОТКРЫТИИ\nКОПИЯ ДАННЫХ → ${GH_REPO}: РАЗ В ДЕНЬ\nСЕРВЕР ВЫЛОЖИЛ SHOP BOT: ${shopT}${sy.err ? "\n⚠ " + esc(sy.err) : ""}</div>` +
+  sheetOf(b => `<div class="stt">🔄 SHOP BOT → ПРИЛОЖЕНИЕ: ПРИ ОТКРЫТИИ\nКОПИЯ ДАННЫХ → ${GH_REPO}: РАЗ В ДЕНЬ\nСЕРВЕР ВЫЛОЖИЛ SHOP BOT: ${shopT}${sy.err ? "\n⚠ КОПИЯ: " + esc(sy.err) : ""}\n📤 ОТЧЁТ ДЛЯ АНАЛИЗА: ${sy.outboxAt ? new Date(sy.outboxAt).toLocaleString("ru-RU") : "ЕЩЁ НЕ ОТПРАВЛЕН"}${sy.reviewErr ? "\n⚠ ОТЧЁТ: " + esc(sy.reviewErr) : ""}</div>` +
     (on ? b("🔄 СЕЙЧАС", () => { closeTop(); syncNow(true); }, "btn") : "") +
+    (on ? b("📤 ОТПРАВИТЬ ОТЧЁТ", () => { closeTop(); S.sync = S.sync || {}; S.sync.outboxFingerprint = null; pushReviewOutbox().then(() => { save(); toast("📤 ОТЧЁТ ОТПРАВЛЕН"); }).catch(e => { S.sync.reviewErr = String(e.message || e).slice(0,80); save(); toast("⚠ ОТЧЁТ: " + S.sync.reviewErr); }); }, "btn") : "") +
     b(on ? "🔑 СМЕНИТЬ ТОКЕН" : "🔑 ВСТАВИТЬ ТОКЕН", () => { closeTop(); askText("ТОКЕН GITHUB (github_pat_…)", t => {
       t = t.trim(); if (!/^(github_pat_|ghp_)\w+/.test(t)) { toast("ЭТО НЕ ТОКЕН"); return false; }
       S.gh = {token: t, repo: GH_REPO}; S.sync = {}; save(); syncNow(true); return true; }); }, "btn") +
