@@ -75,6 +75,18 @@ async function pushReviewOutbox() {
   S.sync.outboxFingerprint = fingerprint;
   S.sync.outboxAt = Date.now();
 }
+// Сферы задач: цвет и значок берём из календарной палитры CATS.
+function inboxSphere(x) {
+  const key = String(x.sphere || x.sph || "").toLowerCase();
+  const t = String(x.text || "").toLowerCase();
+  const k = ["h","p","f","l","r","e","j"].includes(key) ? key :
+    /пдд|права|автошкол|экзамен|обучен|теори|привычк|итог недели/.test(t) ? "p" :
+    /инвест|облигац|налог|капитал|бюджет|финанс|купон|доход|остатк|резерв|крипт/.test(t) ? "f" :
+    /бизнес|авито|товар|продаж|клиент|закупк|магазин/.test(t) ? "j" :
+    /квартир|взнос|жиль|ипотек|audi|ауди|автодетал/.test(t) ? "e" :
+    /трениров|вейп|курени|сон|здоров/.test(t) ? "h" : "p";
+  return CATS.find(c => c.k === k) || CATS[1];
+}
 // 📥 Задачи от Claude (инвест-дайджест и др.): inbox/tasks.json = [{id, text, day?}], каждая добавляется один раз
 async function pullInbox() {
   const box = await ghGetJson("inbox/tasks.json");
@@ -85,7 +97,10 @@ async function pullInbox() {
   box.filter(x => x && x.id && S.inboxSeen.includes(String(x.id)) && !T("plan").some(e => e.inboxSrc === String(x.id)))
     .forEach(x => { S.inboxSeen = S.inboxSeen.filter(id => id !== String(x.id)); });
   const pending = box.filter(x => x && x.id && x.text && !S.inboxSeen.includes(String(x.id)));
-  if (!pending.length) { S.sync.inboxAt = Date.now(); return; }
+  // Обновляем цвет ранее импортированных блоков, не меняя их время и прогресс.
+  let recolored = false;
+  T("plan").forEach(e => { if (!e.inboxSrc) return; const x = box.find(x => String(x.id) === String(e.inboxSrc)); if (!x) return; const c = inboxSphere(x); if (e.sph !== c.k || e.color !== c.c) { e.sph = c.k; e.color = c.c; recolored = true; } });
+  if (!pending.length) { S.sync.inboxAt = Date.now(); if (recolored) save(); return; }
   pending.forEach(x => {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
     if (!T("tasks").some(t => t.src === String(x.id))) T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
@@ -99,9 +114,10 @@ async function pullInbox() {
       let from = 18 * 60;
       while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
       if (from + duration > 1440) from = 20 * 60; // запасной вариант, перенос доступен вручную
+      const sphere = inboxSphere(x);
       T("plan").push({id: nextId("plan"), day, from, to: Math.min(1440, from + duration),
         title: String(x.text).slice(0, 80), detail: "Задача AI-Control-Center · " + cycles + " × 50/10",
-        color: "#4a78d6", sph: "p", nopomo: false, inboxSrc: String(x.id)});
+        color: sphere.c, sph: sphere.k, nopomo: false, inboxSrc: String(x.id)});
     }
     S.inboxSeen.push(String(x.id));
   });
