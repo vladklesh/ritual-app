@@ -37,6 +37,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
       S.sync.shopAt = shop.at || null;
     }
     await pullInbox();
+    await pushReviewOutbox();
     S.sync.pullAt = Date.now();
     if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || screen === "set") render(); return; }
     const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
@@ -48,6 +49,21 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
     syncNext = Date.now() + 10 * 60000;
     if (manual) toast("🔄 НЕ ВЫШЛО: " + S.sync.err + "\nПОПРОБУЮ ПОЗЖЕ САМ");
   } finally { syncBusy = false; }
+}
+// 📤 Отчёт для анализа: только заметки и календарные записи, без финансовых баз,
+// токенов, личных настроек и истории привычек. Отдельный файл, backup.json не трогаем.
+async function pushReviewOutbox() {
+  const notes = T("idea_inbox").map(n => ({id:n.id, text:String(n.text || "").slice(0,2000), created:n.created}));
+  const days = T("plan").filter(e => e && e.day && (e.inboxSrc || e.actual || e.progress !== undefined))
+    .map(e => ({id:e.id, day:e.day, title:String(e.title || "").slice(0,100),
+      from:e.from, to:e.to, progress:e.progress == null ? null : e.progress,
+      actual:!!e.actual, source:e.inboxSrc || null}));
+  const payload = JSON.stringify({version:1,updatedAt:new Date().toISOString(),notes,calendar:days});
+  const fingerprint = payload.replace(/"updatedAt":"[^"]+"/,'"updatedAt":""');
+  if (S.sync && S.sync.outboxFingerprint === fingerprint) return;
+  await ghPut("outbox/dayk-review.json",payload,"DayK review "+today());
+  S.sync.outboxFingerprint = fingerprint;
+  S.sync.outboxAt = Date.now();
 }
 // 📥 Задачи от Claude (инвест-дайджест и др.): inbox/tasks.json = [{id, text, day?}], каждая добавляется один раз
 async function pullInbox() {
