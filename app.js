@@ -89,7 +89,8 @@ function statusMap(day) {
 function setStatus(hid, status, day) {
   day = day || today();
   const L = T("habit_logs"), r = L.find(x => x.habit_id === hid && x.day === day);
-  if (r) r.status = status; else L.push({habit_id: hid, day, status});
+  if (status == null) S.db.habit_logs = L.filter(x => !(x.habit_id === hid && x.day === day));
+  else if (r) r.status = status; else L.push({habit_id: hid, day, status});
   save();
 }
 function quitDays(h) { return h.since ? daysBetween(h.since, today()) : 0; }
@@ -160,7 +161,7 @@ function answer(it, a) {
   save();
   if (a === "y" && /ЗАВТРА РАБОТА/i.test(it.name)) setTimeout(tomorrowShift, 50);   // «завтра работаю?» → место, описание, время, будильник
   if (a === "y" && it.name === "ТРАТЫ") setTimeout(() => spendAdd(today()), 50);
-  return a === "n" && !SPECIAL.includes(it.name);   // true = спросить причину
+  return false; // Без обязательного объяснения.
 }
 function dropSkip(hid, day) { S.db.skip_log = T("skip_log").filter(r => !(r.habit_id === hid && r.day === day)); }
 function askReason(it) {                      // ❌ → «ЧТО ПОМЕШАЛО?» своими словами
@@ -213,7 +214,7 @@ function markUpTo(r, idx, how) {
   for (let i = r.seen; i < idx; i++) {
     if (r.marks[i] && r.marks[i].how !== "auto") continue;   // ⏩ и ❌ не превращаются в ✅
     if (!r.marks[i]) r.marks[i] = {how, act: how === "auto" ? r.steps[i].s : null};
-    commit(r, i);
+    // Автопереход не означает выполнение.
   }
   r.seen = Math.max(r.seen, idx);
 }
@@ -249,7 +250,7 @@ function stepOut(how) {                         // ⏩ пропустить (о�
   const p = posOf(r);
   if (p.idx >= r.steps.length) return;
   r.marks[p.idx] = {how, act: Math.round(p.el - p.c[p.idx])};
-  if (how === "no") setStatus(r.steps[p.idx].id, "no");
+  // Стрелка не меняет статус.
   r.seen = Math.max(r.seen, p.idx + 1);
   if (p.idx + 1 >= r.steps.length) { finishRun(true); return; }
   jump(r, p.c[p.idx + 1]); save(); tickRun();
@@ -257,8 +258,8 @@ function stepOut(how) {                         // ⏩ пропустить (о�
 function prev() {
   const r = S.run; if (!r) return;
   const p = posOf(r), into = p.el - p.c[p.idx];
-  const to = (into > 3 || p.idx === 0) ? p.idx : p.idx - 1;
-  delete r.marks[to]; r.seen = Math.min(r.seen, to);
+  const to = Math.max(0, p.idx - 1);
+  // Возврат не удаляет выполненные отметки.
   jump(r, p.c[to]); save(); tickRun();
 }
 function togglePause() {
@@ -282,11 +283,11 @@ function renderRun() {
     <div class="big clock" id="clk">0:00</div><div class="stepnm" id="lst"></div>
     <button class="aud" id="aud" hidden>▶ 🎧</button>
     <div class="dim" id="cn" style="text-align:center">1/1</div>
-    <div class="foot"><button class="ic" id="ok">✅</button><button class="ic" id="sk">⏩</button><button class="ic" id="no">❌</button></div>`;
+    <div class="foot"><button class="ic" id="back">←</button><button class="ic" id="ok">✅</button><button class="ic" id="sk">→</button></div>`;
   document.getElementById("aud").onclick = playPriming;
   document.getElementById("ok").onclick = next;
   document.getElementById("sk").onclick = () => stepOut("skip");
-  document.getElementById("no").onclick = () => stepOut("no");
+  document.getElementById("back").onclick = prev;
   document.getElementById("clk").onclick = togglePause;
   document.getElementById("x").onclick = () => { if (confirm("ЗАКОНЧИТЬ РАНЬШЕ?")) finishRun(false); };
   tickRun();
@@ -382,7 +383,7 @@ function renderDay() {
   document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
     if (first.typ === "mb") {
       if (b.dataset.a === "go") { if (S.run) { screen = "run"; render(); } else startRun(); return; }
-      first.left.forEach(i => setStatus(i.id, "no")); save(); askReason(first); return;
+      return; // Ничего не отмечаем автоматически.
     }
     if (first.name === TRAINING && first.typ !== "w" && b.dataset.a !== "n") { startTraining(b.dataset.a === "m"); return; }
     const ask = answer(first, b.dataset.a);
