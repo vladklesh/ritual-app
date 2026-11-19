@@ -117,6 +117,7 @@ async function pullInbox() {
     // Календарь: создаём отдельный блок только для новых задач, не трогая существующие события.
     // Выбираем свободный вечерний час; не накладываем задачи друг на друга.
     if (!T("plan").some(e => e.inboxSrc === String(x.id))) {
+      let targetDay = day;
       const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
       const cycles = match ? Math.min(4, +match[1]) : 1;
       const duration = cycles * 60;
@@ -131,10 +132,10 @@ async function pullInbox() {
         from = 18 * 60;
         while (from + duration <= 1440 && nextOccupied.some(e => from < e.to && from + duration > e.from)) from += 30;
         if (from + duration > 1440) return;
-        x = {...x, day:nextDay};
+        targetDay = nextDay;
       }
       const sphere = inboxSphere(x);
-      T("plan").push({id: nextId("plan"), day: x.day || day, from, to: Math.min(1440, from + duration),
+      T("plan").push({id: nextId("plan"), day: targetDay, from, to: Math.min(1440, from + duration),
         title: String(x.text).slice(0, 80), detail: "Задача AI-Control-Center · " + cycles + " × 50/10",
         color: sphere.c, sph: sphere.k, nopomo: false, inboxSrc: String(x.id)});
     }
@@ -143,11 +144,34 @@ async function pullInbox() {
   S.inboxSeen = S.inboxSeen.slice(-500); S.sync.inboxAt = Date.now(); save();
   toast("📥 НОВЫЕ ЗАДАЧИ: " + pending.length + "\n" + pending.map(x => String(x.text).slice(0, 60)).join("\n"));
 }
+// Переносим максимум две незавершённые AI-задачи на сегодня, сохраняя историю.
+function daykCarryForward() {
+  const d = today();
+  const past = T("plan").filter(e => e.inboxSrc && e.day < d && e.progress !== 100 &&
+    !T("plan").some(n => n.carryFrom === e.id));
+  const todayCount = T("plan").filter(e => e.day === d && e.carryFrom).length;
+  let added = 0;
+  for (const e of past.slice(-10)) {
+    if (added + todayCount >= 2) break;
+    if (T("plan").some(n => n.day >= d && n.inboxSrc === e.inboxSrc)) continue;
+    const duration = Math.min(120,Math.max(30,(+e.to||0)-(+e.from||0)));
+    let from = 18 * 60;
+    const busy = T("plan").filter(n => n.day === d);
+    while (from + duration <= 1440 && busy.some(n => from < n.to && from + duration > n.from)) from += 30;
+    if (from + duration > 1440) break;
+    T("plan").push({id:nextId("plan"),day:d,from,to:from+duration,title:e.title,
+      detail:"Перенесено из "+e.day+" · "+String(e.detail||"").slice(0,180),
+      color:e.color,sph:e.sph,nopomo:e.nopomo,inboxSrc:e.inboxSrc,carryFrom:e.id});
+    added++;
+  }
+  if (added) save();
+}
 function syncTick() {
   if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   const sy = S.sync || {}, daily = sy.day !== today(), pull = !sy.pullAt || Date.now() - sy.pullAt > 20 * 60000;
   if (!daily && !pull) return;
+  if (daily) daykCarryForward();
   syncNext = Date.now() + 60000; syncNow(false, !daily);
 }
 function syncLabel() {
