@@ -14,7 +14,15 @@ const CATS = [
 const planSphereKey = k => ({m:"p",a:"l",c:"r",w:"j"}[k] || k);
 const PHH = 52;
 const isMb = e => !!e && !e.work && (e.mb || (/🚿/.test(e.title || "") && /🍳/.test(e.title || "")));   // утренний блок в 📅
-const calendarEventLabel = e => isMb(e) ? "Заряд⚡️Day" : e.title;
+const calendarEventLabel = e => {
+  if (isMb(e)) return "Заряд⚡️Day";
+  if (!e.inboxSrc) return e.title;
+  let t = String(e.title || "").replace(/^[^\\p{L}\\p{N}]+/u, "");
+  const colon = t.indexOf(":");
+  if (colon > 0 && colon < 28) t = t.slice(colon + 1).trim();
+  t = t.replace(/\\s*[·—–-]\\s*(?:🍅\\s*)?\\d+\\s*(?:помидорк[^ ]*|мин|×[^ ]*)?.*$/i, "");
+  return t.trim() || String(e.title || "");
+};
 const progressColor = e => e.progress === 100 ? "#16a34a" : e.progress === 0 ? "#dc2626" : e.color;
 const progressRing = p => {
   if (![0,25,50,75,100].includes(p)) return "";
