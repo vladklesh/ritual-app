@@ -78,7 +78,7 @@ function calcEarn(w) {                             // MCG: до 10 ч — мин
   const r = p.rate || 500;
   w.earned = Math.round((isMCG(p) ? Math.max(w.hours, 10) * r : w.hours * r) * 100) / 100;
 }
-const WORK_VIEWS = ["main", "shifts", "shift", "places", "pay", "rep", "year", "rmenu"];
+const WORK_VIEWS = ["main", "schedule", "shifts", "shift", "places", "pay", "rep", "year", "rmenu"];
 const taxRate = pid => { const p = pid ? getPlace(pid) : null; return p && p.name.trim().toUpperCase() === "MCG" ? TAX_RATE : 0; };
 
 function savePlace(name, rate, unit) {
@@ -386,13 +386,14 @@ function editStartEnd(w) {
 // ---------------------------------------------------------------- экраны
 function renderWork() {
   _acts = []; workPlanSyncAll();
-  ({main: wMain, shifts: wShifts, shift: wShift, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu, ...WEXT}[wv.v] || wMain)();
+  ({main: wMain, schedule: wSchedule, scheduleDay: wScheduleDay, shifts: wShifts, shift: wShift, pay: wPay, spend: wSpend, sday: wSday, rep: wRep, year: wYear, rmenu: wRmenu, ...WEXT}[wv.v] || wMain)();
 }
 function wMain() {
   const ym = today().slice(0, 7), unp = unpaidRows(), pend = pendingTransfers(), fill = workPending();
   let h = `<div class="pre">${esc(reportText(ym))}</div>`;
   if (unp.length) h += `<div class="dim" style="white-space:pre-line">${esc(unpaidLine(unp, ym))}</div>`;
   h += `<div class="r2 ic">${B("➕", addShiftOnDate)}${B("💰", payStart)}${B("📝", () => wgo("shifts"))}${B("📊", () => wgo("rmenu"))}</div>`;
+  h += B("🗓 ГРАФИК РАБОТЫ", () => wgo("schedule", {ym: today().slice(0, 7)}));
   if (fill.length) h += B(`✍ ДОЗАПОЛНИТЬ: ${fill.length}`, () => shiftChain(fill[0].id));
   if (pend.length) {
     h += `<div class="sec">ПЕРЕВЕДИ</div>`;
@@ -400,6 +401,71 @@ function wMain() {
   }
   W(h);
 }
+
+// Предварительные записи существуют только в графике, без создания смен и событий календаря.
+const tentativeRows = () => T("work_tentative");
+function scheduleMonth(ym, delta) {
+  const d = new Date(+ym.slice(0,4), +ym.slice(5,7)-1+delta, 1);
+  return d.getFullYear() + "-" + pad(d.getMonth()+1);
+}
+function scheduleAdd(day) {
+  const ps = places();
+  choose("ПРЕДВАРИТЕЛЬНЫЙ ПРОЕКТ · " + ddmm(day),
+    ps.map(p => [p.name, () => { closeTop(); scheduleAddNote(day, p.name); }])
+    .concat([["➕ ДРУГОЙ ПРОЕКТ", () => { closeTop(); askText("НАЗВАНИЕ ПРОЕКТА", name => {
+      if (!name.trim()) return false;
+      scheduleAddNote(day, name.trim().slice(0,80)); return true;
+    }); }]]));
+}
+function scheduleAddNote(day, name) {
+  askText("КОММЕНТАРИЙ / ВРЕМЯ (МОЖНО ОСТАВИТЬ ПУСТЫМ)", note => {
+    tentativeRows().push({id: nextId("work_tentative"), day, name, note: note.trim().slice(0,200)});
+    save(); wgo("schedule", {ym: day.slice(0,7)}); return true;
+  });
+}
+function wSchedule() {
+  const ym = /^\d{4}-(0[1-9]|1[0-2])$/.test(wv.ym || "") ? wv.ym : today().slice(0,7);
+  const first = new Date(+ym.slice(0,4), +ym.slice(5,7)-1, 1);
+  const count = new Date(first.getFullYear(), first.getMonth()+1, 0).getDate();
+  const weekdays = ["ПН","ВТ","СР","ЧТ","ПТ","СБ","ВС"];
+  const offset = (first.getDay()+6)%7;
+  let grid = '<div class="work-schedule-grid">' + weekdays.map(x=>'<div class="work-schedule-head">'+x+'</div>').join('');
+  for (let i=0;i<offset;i++) grid += '<div></div>';
+  for (let n=1;n<=count;n++) {
+    const day = ym + "-" + pad(n);
+    const booked = T("work_days").filter(w=>w.day===day);
+    const tentative = tentativeRows().filter(w=>w.day===day);
+    const title = booked.map(w=>'✓ '+wplace(w).name).concat(tentative.map(w=>'◌ '+w.name));
+    grid += '<button class="work-schedule-day" data-a="' + _acts.push(()=>wgo("scheduleDay",{ym,day})) + '"><strong>'+n+'</strong>'+title.map(x=>'<small>'+esc(x.slice(0,28))+'</small>').join('')+'</button>';
+  }
+  grid += '</div>';
+  W('<div class="title">🗓 ГРАФИК РАБОТЫ</div><div class="r2">'+
+    B("◀",()=>wgo("schedule",{ym:scheduleMonth(ym,-1)}))+
+    B(ym,()=>askText("МЕСЯЦ И ГОД: ГГГГ-ММ",v=>{
+      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(v.trim())) {toast("ФОРМАТ ГГГГ-ММ");return false;}
+      wgo("schedule",{ym:v.trim()});return true;
+    }))+
+    B("▶",()=>wgo("schedule",{ym:scheduleMonth(ym,1)}))+
+    '</div><div class="dim">✓ ПОДТВЕРЖДЕНО · ◌ ПРЕДВАРИТЕЛЬНО</div>'+grid+
+    B("⬅",()=>wgo("main")));
+}
+function wScheduleDay() {
+  const day=wv.day, ym=wv.ym, booked=T("work_days").filter(w=>w.day===day);
+  const tentative=tentativeRows().filter(w=>w.day===day);
+  let h='<div class="title">'+esc(day)+'</div><div class="sec">ПОДТВЕРЖДЁННЫЕ СМЕНЫ</div>';
+  h+=booked.map(w=>B("✓ "+esc(wplace(w).name),()=>wgo("shift",{id:w.id}))).join('')||'<div class="dim">НЕТ</div>';
+  h+='<div class="sec">ПРЕДВАРИТЕЛЬНО</div>';
+  h+=tentative.map(w=>B("◌ "+esc(w.name)+(w.note?" · "+esc(w.note):""),()=>{
+    sheetOf(b=>'<div class="stt">'+esc(w.name)+'</div>'+
+      b("✏️ ИЗМЕНИТЬ",()=>{closeTop();askText("ПРОЕКТ",v=>{
+        if(!v.trim())return false;w.name=v.trim().slice(0,80);save();wgo("scheduleDay",{ym,day});return true;
+      },{val:w.name});},"btn")+
+      b("🗑 УДАЛИТЬ",()=>{if(!confirm("УДАЛИТЬ ПРЕДВАРИТЕЛЬНУЮ ЗАПИСЬ?"))return;
+        S.db.work_tentative=tentativeRows().filter(x=>x.id!==w.id);save();closeTop();wgo("scheduleDay",{ym,day});},"btn"));
+  })).join('')||'<div class="dim">НЕТ</div>';
+  W(h+B("➕ ПРЕДВАРИТЕЛЬНО",()=>scheduleAdd(day))+B("⬅",()=>wgo("schedule",{ym})));
+}
+
 function wShifts() {
   const rows = T("work_days").filter(w => !w.paid_on).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 30);
   W(`<div class="title">СМЕНЫ</div>` + (rows.map(w => B(`${ddmm(w.day)} ${esc(wplace(w).name.slice(0, 12))} ${w.hours == null ? "?" : gnum(w.hours) + "Ч"}${w.earned == null ? "" : " " + fmtRub(w.earned)}`, () => wgo("shift", {id: w.id}))).join("") || `<div class="dim">ПУСТО</div>`) + B("⬅", () => wgo("main")));
