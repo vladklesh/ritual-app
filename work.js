@@ -607,7 +607,7 @@ function roadsSync(w, e) {
     let day = e.day; while (from < 0) { day = addDays(day, -1); from += 1440; } while (from >= 1440) { day = addDays(day, 1); from -= 1440; }
     T("plan").push({id: nextId("plan"), day, from, to: from + 60, title, color: PCOL[6], nopomo: true, work: w.id, role: "road"});
   };
-  road(e.from - 60, "🚇 НА РАБОТУ"); road(e.to, "🚇 ДОМОЙ");
+  road(e.from - 60, "🚇 ЕДУ НА WORK"); road(e.to, "🚇 ЕДУ HOME");
 }
 function workPlanSync(w) {
   let e = shiftEv(w);
