@@ -59,6 +59,16 @@ async function pullInbox() {
   fresh.forEach(x => {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
     T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
+    // Календарь: создаём отдельный блок только для новых задач, не трогая существующие события.
+    // Без заданного времени — 20:00, один цикл 50/10; пользователь может перенести.
+    if (!T("plan").some(e => e.inboxSrc === String(x.id))) {
+      const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
+      const cycles = match ? Math.min(4, +match[1]) : 1;
+      const from = 20 * 60;
+      T("plan").push({id: nextId("plan"), day, from, to: Math.min(1440, from + cycles * 60),
+        title: String(x.text).slice(0, 80), detail: "Задача AI-Control-Center · " + cycles + " × 50/10",
+        color: "#4a78d6", sph: "p", nopomo: false, inboxSrc: String(x.id)});
+    }
     S.inboxSeen.push(String(x.id));
   });
   S.inboxSeen = S.inboxSeen.slice(-500); save();
