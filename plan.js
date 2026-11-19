@@ -149,7 +149,7 @@ function openFact() {
   const time = m2hm(Math.floor(nowMin()/15)*15);
   w.innerHTML = '<div style="max-height:55vh;overflow:auto"><div class="stt">📝 ЧТО ДЕЛАЛ</div>' +
     '<input id="qtitle" placeholder="ЧТО ДЕЛАЛ?" maxlength="80">' +
-    '<div class="r2"><input id="qday" type="date" value="'+today()+'"><input id="qtime" type="time" value="'+time+'"></div>' +
+    '<div class="r2"><input id="qday" type="date" value="'+today()+'"><input id="qtime" type="time" value="'+time+'" aria-label="С"><input id="qto" type="time" value="'+m2hm(Math.min(1439,hm2m(time)+15))+'" aria-label="До"></div>' +
     '<div class="ev-spheres" id="qsphere">'+CATS.map(c => '<button data-k="'+c.k+'" title="'+c.nm+'" aria-label="'+c.nm+'" style="--sphere-color:'+c.c+'">'+c.ic+'</button>').join("")+'</div>' +
     '<div class="acts"><button id="qclose">✕</button><button id="qsave">✅</button></div></div>';
   document.body.appendChild(w);
@@ -160,10 +160,10 @@ function openFact() {
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   w.querySelector("#qclose").onclick = () => w.remove();
   w.querySelector("#qsave").onclick = () => {
-    const title = w.querySelector("#qtitle").value.trim(), from = hm2m(w.querySelector("#qtime").value);
-    if (!title || from == null) return;
+    const title = w.querySelector("#qtitle").value.trim(), from = hm2m(w.querySelector("#qtime").value), rawTo = hm2m(w.querySelector("#qto").value);
+    if (!title || from == null || rawTo == null) return;
     const day = w.querySelector("#qday").value || today();
-    T("plan").push({id:nextId("plan"),day,from,to:Math.min(1440,from+15),title:"📝 "+title,
+    T("plan").push({id:nextId("plan"),day,from,to:rawTo > from ? rawTo : rawTo + 1440,title:"📝 "+title,
       detail:"Фактически выполнено",color:sphere.c,sph:sphere.k,nopomo:true,actual:true});
     save(); w.remove(); pday=day; renderPlan();
   };
@@ -235,10 +235,10 @@ function openEv(id, day, from) {
     ${e.actual ? "" : `<div style="display:flex;justify-content:space-between;gap:4px;padding:10px 0" id="evprogress">
       ${[0,25,50,75,100].map(p => '<button type="button" data-progress="'+p+'" aria-label="'+(p===0?'Не выполнено':p+' процентов')+'" style="flex:1;min-width:0;background:#252525;border-radius:10px;padding:7px 1px;color:white">'+progressRing(p)+'<div style="font-size:11px">'+(p===0?'✕':p+'%')+'</div></button>').join("")}
     </div>`}
-    <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
+    <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}" aria-label="С"><input type="time" id="eto" value="${m2hm(e.to % 1440)}" aria-label="До"></div>\n    ${e.bundleItems && e.bundleItems.length ? `<div id="evbundle">${e.bundleItems.map((it,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:7px"><input type="checkbox" data-bi="${i}" ${it.done?"checked":""}>${esc(it.text)}</label>`).join("")}</div>` : ""}\n    <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
     <textarea id="edesc" rows="2" placeholder="ДЕТАЛИ, ЗАМЕТКИ (НЕОБЯЗАТЕЛЬНО)">${esc(e.detail || "")}</textarea>
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
-    <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}"><input type="time" id="eto" value="${e.to >= 1440 ? "23:59" : m2hm(e.to)}"></div>
+
     <div class="ev-durations">${[50, 60, 120, 480].map(n => `<button data-q="${n}">${n < 60 ? n + "М" : n / 60 + "Ч"}</button>`).join("")}</div>
     <label class="ev-label">СФЕРА</label><div class="ev-spheres" id="ecol">${CATS.map(c => `<button data-c="${c.c}" data-k="${c.k}" title="${c.nm}" aria-label="${c.nm}" style="--sphere-color:${c.c}">${c.ic}</button>`).join("")}</div>
     <div class="dim" id="ecn"></div>
@@ -257,6 +257,7 @@ function openEv(id, day, from) {
     w.querySelectorAll("[data-r]").forEach(b => { b.style.background = b.dataset.r === rule ? "#fff" : ""; b.style.color = b.dataset.r === rule ? "#000" : ""; });
   };
   paint();
+  w.querySelectorAll("[data-bi]").forEach(b => b.onchange = () => { const it = e.bundleItems[+b.dataset.bi]; if (it) { it.done = b.checked; e.progress = Math.round(e.bundleItems.filter(x=>x.done).length / e.bundleItems.length * 100 / 25)*25; progress=e.progress; save(); paint(); } });
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
   if (g("emst")) g("emst").onclick = () => { w.remove(); if (S.run) { screen = "run"; render(); } else startRun(); };
