@@ -56,10 +56,10 @@ async function pushReviewOutbox() {
   const notes = T("idea_inbox").map(n => ({id:n.id, text:String(n.text || "").slice(0,2000), created:n.created}));
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 21);
   const cutoffDay = isoDay(cutoff);
-  const days = T("plan").filter(e => e && e.day && e.day >= cutoffDay && (e.inboxSrc || e.actual || e.progress !== undefined))
+  const days = T("plan").filter(e => e && e.day && e.day >= cutoffDay)
     .map(e => ({id:e.id, day:e.day, title:String(e.title || "").slice(0,100),
       from:e.from, to:e.to, progress:e.progress == null ? null : e.progress,
-      actual:!!e.actual, source:e.inboxSrc || null}));
+      actual:!!e.actual, source:e.inboxSrc || null, sphere:e.sph || null}));
   const payload = JSON.stringify({version:1,updatedAt:new Date().toISOString(),notes,calendar:days});
   const fingerprint = payload.replace(/"updatedAt":"[^"]+"/,'"updatedAt":""');
   if (S.sync && S.sync.outboxFingerprint === fingerprint) return;
@@ -83,7 +83,7 @@ async function pullInbox() {
       const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
       const cycles = match ? Math.min(4, +match[1]) : 1;
       const duration = cycles * 60;
-      const occupied = T("plan").filter(e => e.day === day);
+      const occupied = T("plan").filter(e => e.day === day && Number.isFinite(e.from) && Number.isFinite(e.to));
       let from = 18 * 60;
       while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
       if (from + duration > 1440) from = 20 * 60; // запасной вариант, перенос доступен вручную
