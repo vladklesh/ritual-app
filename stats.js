@@ -90,7 +90,7 @@ function renderHabitWeek() {
     const st = statusMap(d)[h.id], sign = st === "yes" ? "✅" : st === "no" ? "❌" : "—";
     return '<td><button class="habit-cell" data-h="' + h.id + '" data-d="' + d + '">' + sign + '</button></td>';
   }).join('') + '</tr>').join('');
-  return '<div class="sec">ПРИВЫЧКИ · НЕДЕЛЯ</div><div class="acts"><button id="weekprev">←</button><span>' + monday + ' — ' + dates[6] + '</span><button id="weeknext">→</button></div><div style="overflow-x:auto"><table class="tbl habit-week">' + header + rows + '</table></div><div class="dim">Нажми: — → ✅ → ❌ → —.</div>';
+  return '<div class="sec">СТАТИСТИКА 📊</div><div class="acts"><button id="weekprev">←</button><span>' + monday + ' — ' + dates[6] + '</span><button id="weeknext">→</button></div><div style="overflow-x:auto"><table class="tbl habit-week">' + header + rows + '</table></div><div class="dim">Нажми: — → ✅ → ❌ → —.</div>';
 }
 function renderStats() {
   _acts = [];
