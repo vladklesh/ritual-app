@@ -110,14 +110,14 @@ function dayItemsRaw(day) {
   day = day || today();
   const st = statusMap(day), wd = (new Date(day + "T12:00:00").getDay() + 6) % 7;
   const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day) && !/^ЗАВТРА РАБОТА(?:Ю|ЕТ)\?/i.test(h.name.trim()));
-  const by = k => act.filter(h => h.kind === k);
+  const by = k => act.filter(h => (h.name.trim().toUpperCase() === "ТРАТЫ" ? "evening" : h.kind) === k);
   const sortRemind = (a, b) => ((a.remind ? 0 : 1) - (b.remind ? 0 : 1)) || String(a.remind || "").localeCompare(b.remind || "") || a.id - b.id;
-  const mk = (h, at) => ({id: h.id, kind: h.kind, name: h.name, at, minutes: h.minutes || 0, status: st[h.id] || null, h});
+  const mk = (h, at) => ({id: h.id, kind: h.name.trim().toUpperCase() === "ТРАТЫ" ? "evening" : h.kind, name: h.name, at, minutes: h.minutes || 0, status: st[h.id] || null, h});
   const items = [];
   by("morning").filter(h => !(wd === 6 && h.name === TRAINING))
     .sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.id - b.id).forEach(h => items.push(mk(h, "00:00")));
   by("daily").sort(sortRemind).forEach(h => items.push(mk(h, h.remind || "00:00")));
-  by("evening").sort(sortRemind).forEach(h => items.push(mk(h, h.remind || "00:00")));
+  by("evening").sort(sortRemind).forEach(h => items.push(mk(h, h.name.trim().toUpperCase() === "ТРАТЫ" ? "21:00" : (h.remind || "00:00"))));
   T("weight_flags").filter(f => f.day === day).forEach(f => items.push({typ: "w", id: f.id, kind: "wflag", name: f.exercise,
     at: "19:00", minutes: 0, status: f.status || null}));
   by("quit").sort((a, b) => a.id - b.id).forEach(h => items.push(Object.assign(mk(h, "00:00"), {days: quitDays(h)})));
