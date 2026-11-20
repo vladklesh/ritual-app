@@ -68,6 +68,12 @@ function noWeightNote(ex) {
 }
 function prepareStep(t) { const st = t.steps[t.i]; t.cur = st.type === "set" ? st.target : null; }
 function startTraining(forceMin, back) {
+  // Однократная коррекция старого значения шрагов (46 → 23 кг); история подходов не меняется.
+  if (!S.shrugs23Migrated) {
+    const oldWeight = T("weights").find(w => w.exercise === "Шраги с рюкзаком");
+    if (oldWeight && Number(oldWeight.kg) === 46) oldWeight.kg = 23;
+    S.shrugs23Migrated = true; save();
+  }
   const wd = (new Date().getDay() + 6) % 7;
   let minimal = !!forceMin, why = forceMin ? "ТЫ ВЫБРАЛ ⚡" : "";
   const sl = T("sleep_log").find(r => r.day === today());
