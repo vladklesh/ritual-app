@@ -5,7 +5,7 @@ const PROGRAM = {
   1: [["Отжимания с рюкзаком на спине", 16, "12", 3], ["Отжимания «алмаз» с рюкзаком", 16, "12", 3], ["Отжимания уголком (ноги на стуле)", null, "10", 3]],
   2: [["Тяга рюкзака одной рукой (каждая рука)", 23, "12", 3], ["Сгибание обратным хватом", 16, "12", 3], ["Удержание рюкзака на 90°", 16, "20 сек", 3]],
   3: [["Приседание с рюкзаком у груди", 23, "15", 3], ["Румынская тяга", 46, "15", 3], ["Ягодичный мост с рюкзаком", 23, "15", 3]],
-  4: [["Тяга в наклоне с паузой 1 сек", 23, "10", 3], ["Медленное сгибание (опускание 4 сек)", 16, "10", 3], ["Шраги с рюкзаком", 46, "20/20/15", 3]]
+  4: [["Тяга в наклоне с паузой 1 сек", 23, "10", 3], ["Медленное сгибание (опускание 4 сек)", 16, "10", 3], ["Шраги с рюкзаком", 23, "20/20/15", 3]]
 };
 const CIRCUIT_KG = 16, CIRCUIT_ROUNDS = 3, REST = 40, CIRCUIT_REST = 60;
 const CIRCUIT = [["Приседания", "15"], ["Отжимания", "10"], ["Тяга в наклоне", "15"], ["Сгибания на бицепс", "12"]];
@@ -22,6 +22,13 @@ function defaultKg(ex) {
   return null;
 }
 function getKg(ex, def) { const r = T("weights").find(w => w.exercise === ex); return r ? r.kg : def; }
+function stepKg(t, st) { return t.kgOverrides && Object.prototype.hasOwnProperty.call(t.kgOverrides, st.ex) ? t.kgOverrides[st.ex] : getKg(st.ex, st.default_kg); }
+function nextStepLabel(st, t) {
+  if (!st) return "ТРЕНИРОВКА ЗАВЕРШЕНА";
+  if (st.type === "round") return `КРУГ ${st.round}/${st.total}`;
+  const kg = stepKg(t, st);
+  return `${esc(st.ex.toUpperCase())} · ${st.set_no}/${st.total}${kg == null ? "" : " · " + kg + " КГ"} · ${st.target}${st.unit ? " " + esc(st.unit.toUpperCase()) : ""}`;
+}
 function setKg(ex, kg) {
   const r = T("weights").find(w => w.exercise === ex);
   if (r) r.kg = kg; else T("weights").push({user_id: 0, exercise: ex, kg});
@@ -67,7 +74,7 @@ function startTraining(forceMin, back) {
   if (sl && sl.nosleep) { minimal = true; why = "БЕЗ СНА"; }
   const steps = buildSteps(wd, minimal);
   if (!steps) { alert("ВОСКРЕСЕНЬЕ: ОТДЫХ 😴"); return; }
-  S.train = {steps, i: 0, cur: null, restEnd: null, actual: {}, kgdef: {}, minimal, why, forced: !!forceMin, back: back || "day"};
+  S.train = {steps, i: 0, cur: null, restEnd: null, actual: {}, kgdef: {}, kgOverrides: {}, minimal, why, forced: !!forceMin, back: back || "day"};
   prepareStep(S.train); save(); screen = "train"; lock(true); render();
 }
 function trainHabit() { return habits().find(h => h.active !== 0 && h.kind === "morning" && h.name === TRAINING); }
@@ -115,16 +122,16 @@ function paintTrain() {
   if (!t || !tv) return;
   const st = t.steps[t.i], head = t.minimal ? `<div class="dim">⚡ МИНИМАЛКА · ${esc(t.why)}</div>` : "";
   if (t.restEnd) {
-    tv.innerHTML = `${head}<div class="dim" style="padding-top:8vh">ОТДЫХ</div><div class="big clock" id="rest">${Math.ceil((t.restEnd - Date.now()) / 1000)}</div>
+    tv.innerHTML = `${head}<div class="dim" style="padding-top:8vh">ОТДЫХ</div><div class="big clock" id="rest">${Math.ceil((t.restEnd - Date.now()) / 1000)}</div><div class="dim" style="font-size:17px">ДАЛЬШЕ</div><div class="item" style="padding:12px 8px">${nextStepLabel(st, t)}</div>
       <div class="acts"><button id="rdy" style="font-size:24px">ГОТОВ</button></div>`;
     document.getElementById("rdy").onclick = () => { t.restEnd = null; save(); paintTrain(); };
     return;
   }
   if (st.type === "set") {
-    const kg = getKg(st.ex, st.default_kg), unit = st.unit ? " " + st.unit.toUpperCase() : "";
+    const kg = stepKg(t, st), unit = st.unit ? " " + st.unit.toUpperCase() : "";
     const prev = lastReps(st.ex, st.set_no), note = t.minimal ? null : noWeightNote(st.ex);
     tv.innerHTML = `${head}<div class="item" style="padding-top:5vh">${esc(st.ex.toUpperCase())} · ${st.set_no}/${st.total}</div>
-      <div class="dim" style="font-size:22px">${kg != null ? kg + " КГ" : "БЕЗ ВЕСА"}</div>
+      <button id="editkg" class="btn" style="font-size:22px;margin:4px 0 0;padding:10px">${kg != null ? kg + " КГ ✎" : "БЕЗ ВЕСА ✎"}</button>
       <div class="big clock" style="padding:2vh 0">${t.cur}</div><div class="dim" style="font-size:20px">${esc(unit.trim())}${t.cur !== st.target ? " (ПЛАН " + st.target + ")" : ""}</div>
       ${prev ? `<div class="dim">НА ПРОШЛОЙ: ${esc(String(prev).toUpperCase())}</div>` : ""}
       ${t.minimal ? `<div class="dim">ОСТАВЬ 2 ПОВТОРА В ЗАПАСЕ</div>` : ""}
@@ -132,6 +139,16 @@ function paintTrain() {
       <div class="acts"><button data-d="-3">−3</button><button data-d="-1">−1</button><button data-d="1">+1</button><button data-d="3">+3</button></div>
       <button class="btn go" id="ok" style="font-size:22px;padding:18px">ПОДХОД СДЕЛАН</button>`;
     tv.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { t.cur = Math.max(0, Math.min(99, t.cur + +b.dataset.d)); save(); paintTrain(); });
+    document.getElementById("editkg").onclick = () => {
+      const input = prompt("ВЕС В КГ (0 — без веса)", String(kg == null ? 0 : kg));
+      if (input == null) return;
+      const val = Number(input.trim().replace(",", "."));
+      if (!Number.isFinite(val) || val < 0 || val > 300) { alert("УКАЖИ ВЕС ОТ 0 ДО 300 КГ"); return; }
+      t.kgOverrides = t.kgOverrides || {};
+      t.kgOverrides[st.ex] = val === 0 ? null : val;
+      setKg(st.ex, val === 0 ? null : val);
+      save(); paintTrain();
+    };
   } else {
     tv.innerHTML = `${head}<div class="item" style="padding-top:5vh">КРУГ ${st.round}/${st.total}</div>` +
       st.items.map(([n, r]) => `<div class="card">${esc(n.toUpperCase())} — ${getKg(n, CIRCUIT_KG)} КГ — ${esc(r.toUpperCase())}</div>`).join("") +
@@ -143,7 +160,7 @@ function doneStep() {
   const t = S.train; if (!t) return;
   const st = t.steps[t.i];
   if (st.type === "set") {
-    const kg = getKg(st.ex, st.default_kg), reps = (t.cur + " " + st.unit).trim();
+    const kg = stepKg(t, st), reps = (t.cur + " " + st.unit).trim();
     T("set_logs").push({user_id: 0, day: today(), exercise: st.ex, set_no: st.set_no, kg, reps});
     (t.actual[st.ex] = t.actual[st.ex] || []).push([t.cur, st.target]); t.kgdef[st.ex] = st.default_kg;
   } else {
