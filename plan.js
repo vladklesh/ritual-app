@@ -142,7 +142,7 @@ function renderPlan() {
       const ev = e.target.closest(".ev"), col = e.target.closest(".pcol");
       if (!col) return;
       const y = e.clientY - col.getBoundingClientRect().top, m = Math.max(0, Math.min(1410, Math.floor(y / PHH * 2) * 30));
-      if (ev) return openEv(+ev.dataset.id, col.dataset.d, m);
+      if (ev) { const entry = T("plan").find(x => x.id === +ev.dataset.id); if (entry && entry.discoverStart === DISCOVER_START) return openDiscover(entry.discoverIndex); return openEv(+ev.dataset.id, col.dataset.d, m); }
       openEv(null, col.dataset.d, m);
     };
   }
