@@ -89,6 +89,14 @@ function retinalDay(day) {
   if (n < 28) return [0, 2, 5].includes(n % 7);
   return (n - 28) % 2 === 0;
 }
+const CHARISMA_GOAL = "Харизма 🎯 Снайпер";
+function ensureCharismaGoal() {
+  const found = habits().find(h => h.charismaGoal || /^🎯 Харизма/.test(h.name));
+  if (found) return;
+  habits().push({id:nextId("habits"),user_id:0,name:"🎯 Харизма · 12 мин",kind:"daily",active:1,remind:"18:30",minutes:12,seq:0,created:today(),on_date:null,custom:1,charismaGoal:true,
+    goal:CHARISMA_GOAL,practice:"Голос 5 мин · дикция и паузы 5 мин · разбор разговора 2 мин · один осознанный разговор в течение дня"});
+  save();
+}
 function ensureRetinalHabit() {
   if (habits().some(h => h.retinalReminder)) return;
   habits().push({id:nextId("habits"),user_id:0,name:"Крем · ретиналь",kind:"evening",active:1,remind:"21:30",minutes:2,seq:0,created:today(),on_date:null,custom:1,retinalReminder:true});
@@ -152,6 +160,7 @@ function itemLabel(it) {
     return it.name + " · " + it.days + " ДН." + (kc ? " · 💋" + kc : "");
   }
   if (it.name === N_START) return "☀ НАЧАТЬ ДЕНЬ";
+  if (it.h && it.h.charismaGoal) return it.name + "\nГолос 5 мин · дикция 5 мин · разбор 2 мин\nПрактика: один осознанный разговор";
   return it.name;
 }
 function itemButtons(it) {
