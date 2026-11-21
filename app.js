@@ -108,10 +108,17 @@ function setStatus(hid, status, day) {
   save();
 }
 function quitDays(h) { return h.since ? daysBetween(h.since, today()) : 0; }
-function dayItems(day) {                     // утренние шаги свёрнуты в один пункт «УТРЕННИЙ БЛОК»
+function dayItems(day) {                     // утренние и вечерние шаги свёрнуты в ритуалы
   const raw = dayItemsRaw(day), out = [];
   const steps = raw.filter(i => i.kind === "morning" && !SPECIAL.includes(i.name));
+  const evening = raw.filter(i => i.kind === "evening");
   raw.forEach(i => {
+    if (i.kind === "evening") {
+      if (i !== evening[0]) return;
+      const left = evening.filter(e => !e.status);
+      if (left.length) out.push({typ:"eb",id:"eb",kind:"evening",name:"🌙 Вечерний ритуал",at:"00:00",minutes:0,status:null,steps:evening,left});
+      return;
+    }
     if (i.name === N_START) return;                       // «начать день» убран: день начинается с утреннего блока
     if (i.kind !== "morning" || SPECIAL.includes(i.name)) return out.push(i);
     if (i !== steps[0]) return;
@@ -203,6 +210,16 @@ function morningSteps() {
     .map(i => ({id: i.id, name: i.name, n: i.name.replace(/^Подъём: /, "").replace(/\s*\n\s*/g, " ").slice(0, 40),
       s: (i.minutes || (i.name === TRAINING ? 20 : 1)) * 60, note: ""}));
 }
+function eveningSteps() {
+  return dayItemsRaw().filter(i => i.kind === "evening" && !i.status)
+    .map(i => ({id:i.id,name:i.name,n:i.name.replace(/\s*\n\s*/g," ").slice(0,60),s:Math.max(1,i.minutes||2)*60,note:""}));
+}
+function startEveningRun() {
+  const steps = eveningSteps();
+  if (!steps.length) return;
+  S.run = {id:Date.now(),mode:"evening",day:today(),startedAt:Date.now(),pausedAt:null,pausedTotal:0,steps,marks:{},seen:0};
+  save(); lock(true); screen="run"; render(); beep(1);
+}
 function cum(steps) { let t = 0; return steps.map(s => (t += s.s, t - s.s)); }
 function total(steps) { return steps.reduce((a, s) => a + s.s, 0); }
 function elapsed(r) { return ((r.pausedAt || Date.now()) - r.startedAt - r.pausedTotal) / 1000; }
@@ -221,8 +238,8 @@ function startRun() {
   lock(true); screen = "run"; render(); beep(1);
 }
 function commit(r, i) {                       // шаг пройден → привычка отмечена ✅
-  const st = statusMap(today())[r.steps[i].id];
-  if (!st) setStatus(r.steps[i].id, "yes");
+  const st = statusMap(r.day || today())[r.steps[i].id];
+  if (!st) setStatus(r.steps[i].id, "yes",r.day || today());
 }
 function markUpTo(r, idx, how) {
   for (let i = r.seen; i < idx; i++) {
@@ -236,7 +253,7 @@ function tickRun() {
   const r = S.run;
   if (!r || screen !== "run") return;
   const p = posOf(r);
-  if (p.idx < r.steps.length && r.steps[p.idx].name === TRAINING && !r.pausedAt && !S.train) {
+  if (r.mode !== "evening" && p.idx < r.steps.length && r.steps[p.idx].name === TRAINING && !r.pausedAt && !S.train) {
     markUpTo(r, p.idx, "auto");                // всё до тренировки пройдено; ритуал ждёт
     r.pausedAt = Date.now(); r.waitTrain = p.idx; save();
     startTraining(false, "run"); return;
@@ -285,7 +302,7 @@ function togglePause() {
 function finishRun(full) {
   const r = S.run; if (!r) return;
   const d = new Date(r.startedAt);
-  const rec = {id: r.id, day: isoDay(d), start: pad(d.getHours()) + ":" + pad(d.getMinutes()), routine: "УТРО",
+  const rec = {id: r.id, day: r.day || isoDay(d), start: pad(d.getHours()) + ":" + pad(d.getMinutes()), routine: r.mode === "evening" ? "ВЕЧЕР" : "УТРО",
     full: !!full, planned: total(r.steps),
     steps: r.steps.map((s, i) => ({n: s.n, plan: s.s, how: (r.marks[i] || {}).how || "none", act: (r.marks[i] || {}).act}))};
   S.runs.push(rec); S.run = null; S.last = rec; save(); lock(false);
@@ -379,6 +396,10 @@ function renderDay() {
   const doneN = items.filter(i => i.status).length;
   const head = `<div class="dim">${today().slice(8)}.${today().slice(5, 7)} · ${doneN}/${items.length}</div>` + (hmNow() >= "21:00" && typeof eveningSummary === "function" ? `<div class="dim" style="white-space:pre-line">${esc(eveningSummary())}</div>` : "");
   if (!first) body = `${head}<div class="item">ВСЁ ВЫПОЛНЕНО ✅</div>`;
+  else if (first.typ === "eb") {
+    const mins = first.left.reduce((n,i)=>n+Math.max(1,i.minutes||2),0);
+    body = `${head}<div class="item">🌙 ВЕЧЕРНИЙ РИТУАЛ</div><div class="dim">${first.left.length} ШАГ. · ~${mins} МИН</div><div class="acts"><button data-a="eve">▶ ${S.run && S.run.mode==="evening"?"ПРОДОЛЖИТЬ":"НАЧАТЬ"}</button></div>`;
+  }
   else if (first.at > hmNow()) body = `${head}<div class="item">⏭️ ${first.at}</div>`;
   else if (first.typ === "mb") {
     const mins = Math.round(first.left.reduce((s, i) => s + (i.minutes || (i.name === TRAINING ? 20 : 1)), 0));
@@ -395,6 +416,7 @@ function renderDay() {
   }
   shell(body + (typeof pomoBar === "function" ? pomoBar() : ""));
   document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
+    if (first.typ === "eb") { if (b.dataset.a === "eve") { if (S.run) {screen="run";render();} else startEveningRun(); } return; }
     if (first.typ === "mb") {
       if (b.dataset.a === "go") { if (S.run) { screen = "run"; render(); } else startRun(); return; }
       return; // Ничего не отмечаем автоматически.
