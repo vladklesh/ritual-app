@@ -81,6 +81,20 @@ const N_START = "СТАРТ", TRAINING = "Тренировка", MEAL = "Еда"
 const SPECIAL = ["СТАРТ", "ВСТАЛ В", "ЗАПИШИ СОН", "ЗАВТРА РАБОТАЕТ?", "ЗАВТРА РАБОТАЮ?", "ЛЕГ СПАТЬ В", "ТРАТЫ"];
 const isAbstain = n => /воздерж/i.test(n);
 const habits = () => T("habits");
+const RETINAL_START = "2026-11-23";
+function retinalDay(day) {
+  const n = daysBetween(RETINAL_START, day);
+  if (n < 0) return false;
+  if (n < 14) return n % 7 === 0 || n % 7 === 3;
+  if (n < 28) return [0, 2, 5].includes(n % 7);
+  return (n - 28) % 2 === 0;
+}
+function ensureRetinalHabit() {
+  if (habits().some(h => h.retinalReminder)) return;
+  habits().push({id:nextId("habits"),user_id:0,name:"Крем · ретиналь",kind:"evening",active:1,remind:"21:30",minutes:2,seq:0,created:today(),on_date:null,custom:1,retinalReminder:true});
+  save();
+}
+
 function statusMap(day) {
   const m = {};
   T("habit_logs").forEach(r => { if (r.day === day) m[r.habit_id] = r.status; });
@@ -109,7 +123,7 @@ function dayItems(day) {                     // утренние шаги свё
 function dayItemsRaw(day) {
   day = day || today();
   const st = statusMap(day), wd = (new Date(day + "T12:00:00").getDay() + 6) % 7;
-  const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day) && !/^ЗАВТРА РАБОТА(?:Ю|ЕТ)\?/i.test(h.name.trim()));
+  const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day) && (!h.retinalReminder || retinalDay(day)) && !/^ЗАВТРА РАБОТА(?:Ю|ЕТ)\?/i.test(h.name.trim()));
   const by = k => act.filter(h => (h.name.trim().toUpperCase() === "ТРАТЫ" ? "evening" : h.kind) === k);
   const sortRemind = (a, b) => ((a.remind ? 0 : 1) - (b.remind ? 0 : 1)) || String(a.remind || "").localeCompare(b.remind || "") || a.id - b.id;
   const mk = (h, at) => ({id: h.id, kind: h.name.trim().toUpperCase() === "ТРАТЫ" ? "evening" : h.kind, name: h.name, at, minutes: h.minutes || 0, status: st[h.id] || null, h});
