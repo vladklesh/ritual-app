@@ -272,7 +272,7 @@ function openEv(id, day, from) {
   w.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rule = b.dataset.r; paint(); });
   w.querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
     const f = hm2m(g("ef").value); if (f == null) return;
-    g("eto").value = m2hm(Math.min(1439, f + +b.dataset.q));
+    g("eto").value = m2hm((f + +b.dataset.q) % 1440);
   });
   const scope = (q, one, all) => {                       // для повторяющегося дела: только это или все следующие
     const s = document.createElement("div"); s.className = "sheet";
@@ -293,7 +293,7 @@ function openEv(id, day, from) {
     const f = hm2m(g("ef").value); if (f == null) return;
     let t = hm2m(g("eto").value);
     if (t == null) return;
-    if (t <= f) t = e.actual ? t + 1440 : (t === 0 ? 1440 : Math.min(1440, f + 60));
+    if (t <= f) t += 1440; // любое окончание раньше начала — следующий день, включая сон
     const nd = g("ed").value || e.day;
     const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; if (!x.actual) x.progress = progress; };
     pday = nd;
