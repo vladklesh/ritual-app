@@ -1,0 +1,548 @@
+"use strict";
+// ================================================================== ХРАНИЛИЩЕ
+const LS = "ritual.v2";
+const YES = "✅", NO = "❌";
+let S = load();
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(LS) || "null");
+    if (d && d.db) return d;
+  } catch (e) {}
+  let runs = [];
+  try { const o = JSON.parse(localStorage.getItem("ritual.v1") || "null"); if (o && o.runs) runs = o.runs; } catch (e) {}
+  return {db: {}, runs, run: null, lastExport: null, timers: {}, last: null, seeded: false};
+}
+let saveT = null;
+function idbOpen() {
+  return new Promise((res, rej) => { const r = indexedDB.open("ritual", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbPut(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+function flushSave() {
+  clearTimeout(saveT); saveT = null;
+  try { if (typeof indexedDB !== "undefined") idbPut("state", JSON.stringify(S)).catch(() => {}); } catch (e) {}
+}
+function save() {                                // быстрая копия в localStorage (если влезает) + полная в IndexedDB
+  S.savedAt = Date.now();
+  try { const s = JSON.stringify(S); if (s.length < 1200000) localStorage.setItem(LS, s); else localStorage.removeItem(LS); } catch (e) {}
+  clearTimeout(saveT); saveT = setTimeout(flushSave, 250);
+}
+window.addEventListener && window.addEventListener("pagehide", () => { if (saveT) flushSave(); });
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+const T = n => (S.db[n] = S.db[n] || []);
+
+// ================================================================== УТИЛИТЫ
+const $app = document.getElementById("app");
+const pad = n => String(n).padStart(2, "0");
+const isoDay = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const today = () => isoDay(new Date());
+const hmNow = () => { const n = new Date(); return pad(n.getHours()) + ":" + pad(n.getMinutes()); };
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const esc = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const daysBetween = (a, b) => Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8)) -
+  Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8))) / 864e5);
+const nextId = t => T(t).reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+const parseDur = t => {
+  t = String(t).trim().replace(",", ".");
+  let m = t.match(/^(\d+):(\d{1,2})$/);
+  if (m) return +m[1] * 60 + +m[2];
+  m = t.match(/^(\d+(?:\.\d+)?)$/);
+  return m ? Math.round(parseFloat(m[1]) * 60) : null;
+};
+let audioCtx = null, wake = null, screen = "day", tab = "day", timer = null;
+function beep(n) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    for (let i = 0; i < (n || 1); i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime + i * 0.28;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.start(t); o.stop(t + 0.25);
+    }
+  } catch (e) {}
+  try { navigator.vibrate && navigator.vibrate(n === 3 ? [200, 100, 200, 100, 200] : 200); } catch (e) {}
+}
+async function lock(on) {
+  try {
+    if (on && "wakeLock" in navigator) wake = await navigator.wakeLock.request("screen");
+    else if (wake) { await wake.release(); wake = null; }
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && saveT) flushSave();
+  if (!document.hidden && S.run && !S.run.pausedAt) lock(true);
+  tickAll();
+});
+
+// ================================================================== ТАБЛИЦЫ ПРИВЫЧЕК
+const N_START = "СТАРТ", TRAINING = "Тренировка", MEAL = "Еда";
+const SPECIAL = ["СТАРТ", "ВСТАЛ В", "ЗАПИШИ СОН", "ЗАВТРА РАБОТАЕТ?", "ЗАВТРА РАБОТАЮ?", "ЛЕГ СПАТЬ В", "ТРАТЫ"];
+const isAbstain = n => /воздерж/i.test(n);
+const habits = () => T("habits");
+const RETINAL_START = "2026-11-23";
+function retinalDay(day) {
+  const n = daysBetween(RETINAL_START, day);
+  if (n < 0) return false;
+  if (n < 14) return n % 7 === 0 || n % 7 === 3;
+  if (n < 28) return [0, 2, 5].includes(n % 7);
+  return (n - 28) % 2 === 0;
+}
+function ensureRetinalHabit() {
+  if (habits().some(h => h.retinalReminder)) return;
+  habits().push({id:nextId("habits"),user_id:0,name:"Крем · ретиналь",kind:"evening",active:1,remind:"21:30",minutes:2,seq:0,created:today(),on_date:null,custom:1,retinalReminder:true});
+  save();
+}
+
+function statusMap(day) {
+  const m = {};
+  T("habit_logs").forEach(r => { if (r.day === day) m[r.habit_id] = r.status; });
+  return m;
+}
+function setStatus(hid, status, day) {
+  day = day || today();
+  const L = T("habit_logs"), r = L.find(x => x.habit_id === hid && x.day === day);
+  if (status == null) S.db.habit_logs = L.filter(x => !(x.habit_id === hid && x.day === day));
+  else if (r) r.status = status; else L.push({habit_id: hid, day, status});
+  save();
+}
+function quitDays(h) { return h.since ? daysBetween(h.since, today()) : 0; }
+function dayItems(day) {                     // утренние шаги свёрнуты в один пункт «УТРЕННИЙ БЛОК»
+  const raw = dayItemsRaw(day), out = [];
+  const steps = raw.filter(i => i.kind === "morning" && !SPECIAL.includes(i.name));
+  raw.forEach(i => {
+    if (i.name === N_START) return;                       // «начать день» убран: день начинается с утреннего блока
+    if (i.kind !== "morning" || SPECIAL.includes(i.name)) return out.push(i);
+    if (i !== steps[0]) return;
+    const left = steps.filter(s => !s.status), ev = typeof mbEvent === "function" ? mbEvent(day || today()) : null;
+    out.push({typ: "mb", id: "mb", kind: "morning", name: "Заряд⚡️Day", at: ev ? m2hm(ev.from) : "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
+  });
+  return out;
+}
+function dayItemsRaw(day) {
+  day = day || today();
+  const st = statusMap(day), wd = (new Date(day + "T12:00:00").getDay() + 6) % 7;
+  const act = habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day) && (!h.retinalReminder || retinalDay(day)) && !/^ЗАВТРА РАБОТА(?:Ю|ЕТ)\?/i.test(h.name.trim()));
+  const by = k => act.filter(h => (h.name.trim().toUpperCase() === "ТРАТЫ" ? "evening" : h.kind) === k);
+  const sortRemind = (a, b) => ((a.remind ? 0 : 1) - (b.remind ? 0 : 1)) || String(a.remind || "").localeCompare(b.remind || "") || a.id - b.id;
+  const mk = (h, at) => ({id: h.id, kind: h.name.trim().toUpperCase() === "ТРАТЫ" ? "evening" : h.kind, name: h.name, at, minutes: h.minutes || 0, status: st[h.id] || null, h});
+  const items = [];
+  by("morning").filter(h => !(wd === 6 && h.name === TRAINING))
+    .sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.id - b.id).forEach(h => items.push(mk(h, "00:00")));
+  by("daily").sort(sortRemind).forEach(h => items.push(mk(h, h.remind || "00:00")));
+  by("evening").sort(sortRemind).forEach(h => items.push(mk(h, h.name.trim().toUpperCase() === "ТРАТЫ" ? "21:00" : (h.remind || "00:00"))));
+  T("weight_flags").filter(f => f.day === day).forEach(f => items.push({typ: "w", id: f.id, kind: "wflag", name: f.exercise,
+    at: "19:00", minutes: 0, status: f.status || null}));
+  by("quit").sort((a, b) => a.id - b.id).forEach(h => items.push(Object.assign(mk(h, "00:00"), {days: quitDays(h)})));
+  by("night").sort((a, b) => a.id - b.id).forEach(h => items.push(mk(h, "00:00")));
+  return items;
+}
+function itemLabel(it) {
+  if (it.typ === "w") return "ДОБАВИТЬ ВЕС: " + it.name.toUpperCase() + " (СЕЙЧАС " + (getKg(it.name, null) ?? 0) + " КГ)\nНАПИШИ, СКОЛЬКО КГ ДОБАВИЛ";
+  if (it.kind === "quit") {
+    const kc = isAbstain(it.name) ? T("abstain_log").filter(a => a.habit_id === it.id && a.kind === "sex").length : 0;
+    return it.name + " · " + it.days + " ДН." + (kc ? " · 💋" + kc : "");
+  }
+  if (it.name === N_START) return "☀ НАЧАТЬ ДЕНЬ";
+  return it.name;
+}
+function itemButtons(it) {
+  if (it.kind === "quit" && isAbstain(it.name)) return [["y", YES], ["s", "💋"], ["n", NO]];
+  if (it.kind === "quit" || SPECIAL.includes(it.name)) return [["y", YES], ["n", NO]];
+  return [["y", YES], ["m", /прайминг/i.test(it.name) ? "🎧📴" : "⚡"], ["n", NO]];
+}
+function answer(it, a) {
+  const day = today();
+  if (it.typ === "w") { const f = T("weight_flags").find(x => x.id === it.id); if (f) f.status = "no"; save(); return false; }
+  if (it.kind === "quit") {
+    if (a === "y") setStatus(it.id, "yes");
+    else {                                    // срыв: счётчик в ноль, рекорд сохраняется
+      T("quit_log").push({habit_id: it.id, day, streak: quitDays(it.h)});
+      it.h.since = day; setStatus(it.id, "no");
+      if (isAbstain(it.name)) T("abstain_log").push({id: nextId("abstain_log"), habit_id: it.id, day, kind: a === "s" ? "sex" : "slip", at: null});
+    }
+    save(); return false;
+  }
+  if (a === "y" && ["ВСТАЛ В", "ЗАПИШИ СОН", "ЛЕГ СПАТЬ В"].includes(it.name)) { sleepAsk(it); return false; }
+  if (a === "m") {
+    setStatus(it.id, "yes");
+    T("min_log").push({habit_id: it.id, day});
+    dropSkip(it.id, day); save(); return false;
+  }
+  setStatus(it.id, a === "y" ? "yes" : "no");
+  if (a === "y") { dropSkip(it.id, day); }
+  save();
+  if (a === "y" && /ЗАВТРА РАБОТА/i.test(it.name)) setTimeout(tomorrowShift, 50);   // «завтра работаю?» → место, описание, время, будильник
+  if (a === "y" && it.name === "ТРАТЫ") setTimeout(() => spendAdd(today()), 50);
+  return false; // Без обязательного объяснения.
+}
+function dropSkip(hid, day) { S.db.skip_log = T("skip_log").filter(r => !(r.habit_id === hid && r.day === day)); }
+function askReason(it) {                      // ❌ → «ЧТО ПОМЕШАЛО?» своими словами
+  const day = today();
+  const row = {habit_id: it.id, day, reason: null, text: null, name: String(it.name || "").split("\n")[0].slice(0, 60)};
+  T("skip_log").push(row); save();
+  const sh = document.createElement("div");
+  sh.className = "sheet";
+  sh.innerHTML = `<div><div class="title" style="padding:4px 0">${NO} ${esc(row.name)}<br>ЧТО ПОМЕШАЛО?</div>
+    <textarea class="ai" rows="3" id="rtx" placeholder="СВОИМИ СЛОВАМИ"></textarea>
+    <div class="acts">${it.typ === "mb" || SPECIAL.includes(it.name) || it.kind === "quit" ? "" : '<button data-r="m">⚡</button>'}<button data-r="-">⏭</button><button data-r="ok">✅</button></div></div>`;
+  sh.querySelectorAll("button").forEach(b => b.onclick = () => {
+    const r = b.dataset.r;
+    if (r === "m") { answer(it, "m"); S.db.skip_log = T("skip_log").filter(x => x !== row); }
+    else if (r === "ok") row.text = sh.querySelector("#rtx").value.trim() || null;
+    save(); sh.remove(); render();
+  });
+  document.body.appendChild(sh);
+  try { sh.querySelector("#rtx").focus(); } catch (e) {}
+}
+
+// ================================================================== УТРО-РИТУАЛ (по часам)
+function morningSteps() {
+  return dayItemsRaw().filter(i => i.kind === "morning" && !SPECIAL.includes(i.name) && !i.status)
+    .map(i => ({id: i.id, name: i.name, n: i.name.replace(/^Подъём: /, "").replace(/\s*\n\s*/g, " ").slice(0, 40),
+      s: (i.minutes || (i.name === TRAINING ? 20 : 1)) * 60, note: ""}));
+}
+function cum(steps) { let t = 0; return steps.map(s => (t += s.s, t - s.s)); }
+function total(steps) { return steps.reduce((a, s) => a + s.s, 0); }
+function elapsed(r) { return ((r.pausedAt || Date.now()) - r.startedAt - r.pausedTotal) / 1000; }
+function posOf(r) {
+  const c = cum(r.steps), el = elapsed(r);
+  if (el >= total(r.steps)) return {idx: r.steps.length, el, c};
+  let i = 0;
+  while (i + 1 < c.length && c[i + 1] <= el) i++;
+  return {idx: i, el, c};
+}
+function startRun() {
+  const steps = morningSteps();
+  if (!steps.length) return;
+  S.run = {id: Date.now(), startedAt: Date.now(), pausedAt: null, pausedTotal: 0, steps, marks: {}, seen: 0};
+  save(); try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  lock(true); screen = "run"; render(); beep(1);
+}
+function commit(r, i) {                       // шаг пройден → привычка отмечена ✅
+  const st = statusMap(today())[r.steps[i].id];
+  if (!st) setStatus(r.steps[i].id, "yes");
+}
+function markUpTo(r, idx, how) {
+  for (let i = r.seen; i < idx; i++) {
+    if (r.marks[i] && r.marks[i].how !== "auto") continue;   // ⏩ и ❌ не превращаются в ✅
+    if (!r.marks[i]) r.marks[i] = {how, act: how === "auto" ? r.steps[i].s : null};
+    // Автопереход не означает выполнение.
+  }
+  r.seen = Math.max(r.seen, idx);
+}
+function tickRun() {
+  const r = S.run;
+  if (!r || screen !== "run") return;
+  const p = posOf(r);
+  if (p.idx < r.steps.length && r.steps[p.idx].name === TRAINING && !r.pausedAt && !S.train) {
+    markUpTo(r, p.idx, "auto");                // всё до тренировки пройдено; ритуал ждёт
+    r.pausedAt = Date.now(); r.waitTrain = p.idx; save();
+    startTraining(false, "run"); return;
+  }
+  if (p.idx > r.seen) {
+    markUpTo(r, p.idx, "auto"); save();
+    if (p.idx >= r.steps.length) { finishRun(true); return; }
+    if (document.visibilityState === "visible") beep(1);
+  }
+  paintRun(p);
+}
+function jump(r, sec) { r.startedAt = (r.pausedAt || Date.now()) - r.pausedTotal - sec * 1000; }
+function next() {
+  const r = S.run; if (!r) return;
+  const p = posOf(r);
+  if (p.idx >= r.steps.length) return;
+  r.marks[p.idx] = {how: "next", act: Math.round(p.el - p.c[p.idx])};
+  commit(r, p.idx);
+  r.seen = Math.max(r.seen, p.idx + 1);
+  if (p.idx + 1 >= r.steps.length) { finishRun(true); return; }
+  jump(r, p.c[p.idx + 1]); save(); tickRun();
+}
+function stepOut(how) {                         // ⏩ пропустить (останется неотмеченным) · ❌ не сделал
+  const r = S.run; if (!r) return;
+  const p = posOf(r);
+  if (p.idx >= r.steps.length) return;
+  r.marks[p.idx] = {how, act: Math.round(p.el - p.c[p.idx])};
+  // Стрелка не меняет статус.
+  r.seen = Math.max(r.seen, p.idx + 1);
+  if (p.idx + 1 >= r.steps.length) { finishRun(true); return; }
+  jump(r, p.c[p.idx + 1]); save(); tickRun();
+}
+function prev() {
+  const r = S.run; if (!r) return;
+  const p = posOf(r), into = p.el - p.c[p.idx];
+  const to = Math.max(0, p.idx - 1);
+  // Возврат не удаляет выполненные отметки.
+  jump(r, p.c[to]); save(); tickRun();
+}
+function togglePause() {
+  const r = S.run; if (!r) return;
+  if (r.pausedAt) { r.pausedTotal += Date.now() - r.pausedAt; r.pausedAt = null; lock(true); }
+  else { r.pausedAt = Date.now(); lock(false); }
+  save(); tickRun();
+}
+function finishRun(full) {
+  const r = S.run; if (!r) return;
+  const d = new Date(r.startedAt);
+  const rec = {id: r.id, day: isoDay(d), start: pad(d.getHours()) + ":" + pad(d.getMinutes()), routine: "УТРО",
+    full: !!full, planned: total(r.steps),
+    steps: r.steps.map((s, i) => ({n: s.n, plan: s.s, how: (r.marks[i] || {}).how || "none", act: (r.marks[i] || {}).act}))};
+  S.runs.push(rec); S.run = null; S.last = rec; save(); lock(false);
+  if (full) beep(3);
+  screen = "day"; tab = "day"; render();
+}
+function renderRun() {
+  $app.innerHTML = `<button class="x" id="x">✕</button>
+    <div class="big clock" id="clk">0:00</div><div class="stepnm" id="lst"></div>
+    <button class="aud" id="aud" hidden>▶ 🎧</button>
+    <div class="dim" id="cn" style="text-align:center">1/1</div>
+    <div class="foot"><button class="ic" id="back">←</button><button class="ic" id="ok">✅</button><button class="ic" id="sk">→</button></div>`;
+  document.getElementById("aud").onclick = playPriming;
+  document.getElementById("ok").onclick = next;
+  document.getElementById("sk").onclick = () => stepOut("skip");
+  document.getElementById("back").onclick = prev;
+  document.getElementById("clk").onclick = togglePause;
+  document.getElementById("x").onclick = () => { if (confirm("ЗАКОНЧИТЬ РАНЬШЕ?")) finishRun(false); };
+  tickRun();
+}
+function paintRun(p) {
+  const r = S.run, clk = document.getElementById("clk");
+  if (!r || !clk) return;
+  const idx = Math.min(p.idx, r.steps.length - 1), st = r.steps[idx];
+  clk.textContent = fmt(p.c[idx] + st.s - p.el);
+  clk.classList.toggle("paused", !!r.pausedAt);
+  document.getElementById("cn").textContent = (idx + 1) + "/" + r.steps.length;
+  const au = document.getElementById("aud"); if (au) au.hidden = !(S.priming && /прайминг/i.test(st.name || st.n));
+  document.getElementById("lst").innerHTML = esc(st.n) + (st.note ? `<small>${esc(st.note)}</small>` : "");
+}
+
+// ================================================================== ЭКРАНЫ
+const TABS = [["day", "DAY"], ["plan", "📅"], ["tasks", "🧳"], ["spend", "➖"], ["work", "🤵‍♂️"], ["set", "⚙"]];
+function lastSun2130() {
+  const n = new Date(), d = new Date(n); d.setHours(21, 30, 0, 0); d.setDate(d.getDate() - d.getDay());
+  if (d > n) d.setDate(d.getDate() - 7);
+  return d.getTime();
+}
+function exportDue() {
+  if (!S.since) { S.since = Date.now(); save(); }
+  if (S.gh && S.gh.token && S.sync && S.sync.backupAt && Date.now() - S.sync.backupAt < 8 * 864e5) return false; return (S.lastExport || S.since) < lastSun2130(); }
+function shell(inner) {
+  const ban = exportDue() ? `<div class="warn" id="exw">⬆ ВС 21:30 · СОХРАНИ КОПИЮ ДАННЫХ (НАЖМИ)</div>` : "";
+  $app.innerHTML = `<div class="scroll" id="body">${ban}${inner}</div><div class="tabs">` +
+    TABS.map(t => `<button data-t="${t[0]}" class="${tab === t[0] || (t[0] === "set" && ["fail", "debt"].includes(tab)) ? "on" : ""}" style="${t[1] === "DAY" ? "font-size:16px;font-weight:700" : ""}">${t[1]}</button>`).join("") + `</div>`;
+  $app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; screen = tab; render(); });
+  const ew = document.getElementById("exw"); if (ew) ew.onclick = exportAll;
+}
+function render() {
+  clearInterval(timer);
+  if (screen === "run" && S.run) { renderRun(); timer = setInterval(tickAll, 250); return; }
+  if (screen === "train" && S.train) { renderTrain(); timer = setInterval(tickTrain, 250); return; }
+  if (screen === "tstats") return renderTStats();
+  if (screen === "tday") return renderTDay();
+  if (screen === "edit") return renderEdit();
+  if (screen === "why") return renderWhy();
+  if (screen === "stats") return renderStats();
+  if (!S.seeded && !habits().length) return renderEmpty();
+  if (tab === "day") renderDay();
+  else if (tab === "plan") renderPlan();
+  else if (tab === "work") { if (!WORK_VIEWS.includes(wv.v)) wv = {v: "main"}; renderWork(); }
+  else if (tab === "spend") { if (!["spend", "sday"].includes(wv.v)) wv = {v: "spend"}; renderWork(); }
+  else if (tab === "debt") { if (!["debts", "owe", "zp", "dhist"].includes(wv.v)) wv = {v: "debts"}; renderWork(); }
+  else if (tab === "tasks") renderTasks();
+  else if (tab === "fail") renderFail();
+  else if (tab === "set") renderSet();
+  else shell(`<div class="title">СКОРО</div><div class="dim">ЭТОТ РАЗДЕЛ ПЕРЕНОСИТСЯ СЛЕДУЮЩИМ ЭТАПОМ.<br>ПОКА ОН В БОТЕ.</div>`);
+  timer = setInterval(tickAll, 1000);
+}
+function tickAll() {
+  if (typeof pomoTick === "function") pomoTick();
+  if (typeof workTick === "function") workTick();
+  if (typeof evTick === "function") evTick();
+  if (typeof syncTick === "function") syncTick();
+  if (screen === "run") return tickRun();
+  if (screen === "train") return tickTrain();
+  const cd = document.getElementById("cd");
+  if (cd) paintCountdown(cd);
+}
+function renderEmpty() {
+  shell(`<div class="title">ПУСТО</div><div class="dim">В БОТЕ: ⚙ → 📱 ВЫГРУЗИТЬ В ПРИЛОЖЕНИЕ, ПОТОМ ЗДЕСЬ ⚙ → ЗАГРУЗИТЬ ИЗ БОТА</div>
+    <button class="btn" id="imp">ЗАГРУЗИТЬ ИЗ БОТА</button><input type="file" id="file" accept=".json,application/json" hidden>`);
+  document.getElementById("imp").onclick = () => document.getElementById("file").click();
+  document.getElementById("file").onchange = importSeed;
+}
+let cdItem = null;
+function renderDay() {
+  const items = dayItems(), pend = items.filter(i => !i.status), first = pend[0];
+  let body;
+  cdItem = null;
+  const doneN = items.filter(i => i.status).length;
+  const head = `<div class="dim">${today().slice(8)}.${today().slice(5, 7)} · ${doneN}/${items.length}</div>` + (hmNow() >= "21:00" && typeof eveningSummary === "function" ? `<div class="dim" style="white-space:pre-line">${esc(eveningSummary())}</div>` : "");
+  if (!first) body = `${head}<div class="item">ВСЁ ВЫПОЛНЕНО ✅</div>`;
+  else if (first.at > hmNow()) body = `${head}<div class="item">⏭️ ${first.at}</div>`;
+  else if (first.typ === "mb") {
+    const mins = Math.round(first.left.reduce((s, i) => s + (i.minutes || (i.name === TRAINING ? 20 : 1)), 0));
+    body = `${head}<div class="item">${esc(first.name)}</div><div class="dim">${first.left.length} ШАГ. · ~${mins} МИН</div>
+      <div class="acts"><button data-a="go">${S.run ? "▶ ДАЛЬШЕ" : "▶"}</button><button data-a="n">${NO}</button></div>`;
+  } else {
+    const mins = first.minutes && first.name !== TRAINING ? " · " + first.minutes + " МИН" : "";
+    cdItem = first.minutes && first.name !== TRAINING ? first : null;
+    const btns = (first.typ === "w" ? [["n", NO]] : itemButtons(first)).map(b => `<button data-a="${b[0]}">${b[1]}</button>`).join("");
+    const winput = first.typ === "w" ? `<div class="acts"><input id="wkg" inputmode="decimal" placeholder="КГ" style="font-size:28px;text-align:center"><button id="wok">✅</button></div>` : "";
+    body = `${head}<div class="item">▶ ${esc(itemLabel(first))}${mins}</div>
+      ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${S.priming && /прайминг/i.test(first.name) ? '<button class="btn" id="aud2">▶ 🎧 ПРАЙМИНГ</button>' : ""}${winput}<div class="acts">${btns}</div>
+`;
+  }
+  shell(body + (typeof pomoBar === "function" ? pomoBar() : ""));
+  document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
+    if (first.typ === "mb") {
+      if (b.dataset.a === "go") { if (S.run) { screen = "run"; render(); } else startRun(); return; }
+      return; // Ничего не отмечаем автоматически.
+    }
+    if (first.name === TRAINING && first.typ !== "w" && b.dataset.a !== "n") { startTraining(b.dataset.a === "m"); return; }
+    const ask = answer(first, b.dataset.a);
+    if (ask) askReason(first); else render();
+  });
+  const wi = document.getElementById("wkg");
+  if (wi) document.getElementById("wok").onclick = () => addWeight(first, wi.value);
+  const a2 = document.getElementById("aud2"); if (a2) a2.onclick = playPriming;
+  if (cdItem) { const k = cdItem.id + ":" + today(); if (!S.timers[k]) { S.timers[k] = Date.now(); save(); } paintCountdown(document.getElementById("cd")); }
+}
+function paintCountdown(el) {
+  if (!cdItem || !el) return;
+  const k = cdItem.id + ":" + today(), left = cdItem.minutes * 60 - (Date.now() - (S.timers[k] || Date.now())) / 1000;
+  el.textContent = left > 0 ? fmt(left) : "⏰ ВРЕМЯ ВЫШЛО";
+  if (left <= 0 && !S.timers[k + ":b"]) { S.timers[k + ":b"] = 1; save(); beep(2); }
+}
+function failedItems() {
+  const day = today(), st = statusMap(day);
+  return habits().filter(h => h.active !== 0 && (!h.on_date || h.on_date === day) && st[h.id] === "no" &&
+    (h.kind === "quit" || (!SPECIAL.includes(h.name) && h.name !== TRAINING)));
+}
+function renderFail() {
+  const f = failedItems();
+  const rows = f.map(h => `<button class="btn" data-h="${h.id}">${YES} ${esc(h.name.slice(0, 40))}</button>`).join("");
+  shell((f.length ? `<div class="title">ПРОВАЛЕННЫЕ СЕГОДНЯ: ${f.length}</div><div class="dim">НАЖМИ ${YES}, ЕСЛИ СДЕЛАЛ</div>${rows}`
+    : `<div class="item">ПРОВАЛОВ НЕТ ✅</div>`) + `<button class="btn" id="fback">⬅</button>`);
+  document.getElementById("fback").onclick = () => { tab = "set"; screen = "set"; render(); };
+  document.querySelectorAll("[data-h]").forEach(b => b.onclick = () => {
+    const h = habits().find(x => x.id === +b.dataset.h), day = today();
+    if (h.kind === "quit") {                  // отказ нажат ❌ по ошибке: вернуть счётчик
+      const q = T("quit_log").filter(r => r.habit_id === h.id && r.day === day).pop();
+      if (q) { const d = new Date(); d.setDate(d.getDate() - q.streak); h.since = isoDay(d); S.db.quit_log = T("quit_log").filter(r => r !== q); }
+      S.db.abstain_log = T("abstain_log").filter(a => !(a.habit_id === h.id && a.day === day));
+    }
+    setStatus(h.id, "yes"); dropSkip(h.id, day); save(); render();
+  });
+}
+function renderSet() {
+  const last = S.lastExport ? new Date(S.lastExport).toLocaleDateString("ru-RU") : "НИКОГДА";
+  shell(`<div class="setg">
+    <button class="btn" data-go="stats">📊 СТАТИСТИКА</button>
+    <button class="btn" data-go="tstats">📊💪 ТРЕНИРОВКИ</button>
+    <button class="btn" id="prim">🎧 ПРАЙМИНГ${S.priming ? " ✅" : ""}</button>
+    <button class="btn" data-tab="debt">🫴🏻</button></div>
+    <input type="file" id="pfile" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden><input type="file" id="file" accept=".json,application/json" hidden>
+    <div class="bk"><button id="ex">💾<small>СОХРАНИТЬ · ${last}</small></button><button id="imp">⬇<small>ВОССТАНОВИТЬ</small></button><button id="syn">🔄<small>${syncLabel()}</small></button></div>`);
+  document.getElementById("syn").onclick = syncSetup;
+  document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { screen = b.dataset.go; render(); });
+  document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = screen = b.dataset.tab; if (tab === "tasks") tv = {v: "main"}; if (tab === "debt") wv = {v: "debts"}; render(); });
+  document.getElementById("ex").onclick = exportAll;
+  document.getElementById("prim").onclick = () => document.getElementById("pfile").click();
+  document.getElementById("pfile").onchange = ev => { const f = ev.target.files[0]; if (f) savePrimingFile(f).then(render); };
+  document.getElementById("imp").onclick = () => document.getElementById("file").click();
+  document.getElementById("file").onchange = importSeed;
+}
+// ---------------------------------------------------------------- причины
+function renderWhy() {
+  const s0 = addDays(today(), -13);
+  const hs = new Set(habits().filter(h => h.kind !== "quit").map(h => h.id));
+  const logs = T("habit_logs").filter(l => l.day >= s0 && hs.has(l.habit_id));
+  const mins = T("min_log").filter(m => m.day >= s0 && hs.has(m.habit_id)).length;
+  const yes = logs.filter(l => l.status === "yes").length, no = logs.filter(l => l.status === "no").length;
+  const sk = T("skip_log").filter(r => r.day >= s0).sort((a, b) => b.day.localeCompare(a.day));
+  const name = r => r.name || (habits().find(h => h.id === r.habit_id) || {name: r.habit_id === "mb" ? "УТРЕННИЙ БЛОК" : "?"}).name.split("\n")[0];
+  const txt = sk.filter(r => r.text), empty = sk.length - txt.length;
+  let h = `<div class="title">🧠 ПРИЧИНЫ · 14 ДНЕЙ</div><div class="card">✅ ${Math.max(yes - mins, 0)} · ⚡ ${mins} · ❌ ${no}</div>`;
+  h += txt.length ? txt.map(r => `<div class="card"><div class="dim" style="text-align:left">${r.day.slice(8)}.${r.day.slice(5, 7)} · ${esc(name(r))}</div>${esc(r.text)}</div>`).join("")
+    : `<div class="dim">ПОКА ПУСТО. ПОСЛЕ ❌ ПИШИ, ЧТО ПОМЕШАЛО.</div>`;
+  if (empty) h += `<div class="dim">❌ БЕЗ ОТВЕТА: ${empty}</div>`;
+  h += `<div class="dim">ГЛУБИННЫЕ ПРИЧИНЫ РАЗБЕРЁТ CLAUDE: НАПИШИ В ЧАТ «РАЗБЕРИ ПРИЧИНЫ».</div>`;
+  $app.innerHTML = `<div class="scroll">${h}</div><button class="btn" id="back">⬅</button>`;
+  document.getElementById("back").onclick = () => { screen = "set"; tab = "set"; render(); };
+}
+// ---------------------------------------------------------------- редактор привычек
+const KINDS = [["morning", "🌞 УТРО"], ["daily", "☀️ ДЕНЬ"], ["evening", "🌙 ВЕЧЕР"], ["quit", "🚫 ОТКАЗ"]];
+function renderEdit() {
+  let h = `<div class="title">♾️ ПРИВЫЧКИ</div>`;
+  KINDS.forEach(([k, nm]) => {
+    const rows = habits().filter(x => x.kind === k && x.active !== 0 && !SPECIAL.includes(x.name))
+      .sort((a, b) => k === "morning" ? (a.seq || 0) - (b.seq || 0) : String(a.remind || "99").localeCompare(b.remind || "99") || a.id - b.id);
+    h += `<div class="sec">${nm}</div>` + rows.map(x => `<div class="card edit" data-id="${x.id}">
+      <input data-k="name" value="${esc(x.name)}">
+      <input data-k="${k === "morning" ? "minutes" : k === "quit" ? "since" : "remind"}" style="width:92px" placeholder="${k === "morning" ? "МИН" : k === "quit" ? "ДНЕЙ" : "ЧЧ:ММ"}"
+        value="${k === "morning" ? (x.minutes || "") : k === "quit" ? quitDays(x) : esc(x.remind || "")}">
+      <div class="mini" style="grid-column:1/3">${k === "morning" ? '<button data-a="up">▲</button><button data-a="dn">▼</button>' : ""}<button data-a="rm">✕</button></div>
+    </div>`).join("") + `<button class="btn" data-add="${k}">➕</button>`;
+  });
+  $app.innerHTML = `<div class="scroll">${h}</div><button class="btn" id="back">⬅</button>`;
+  $app.querySelectorAll("input").forEach(inp => inp.onchange = () => {
+    const x = habits().find(r => r.id === +inp.closest(".card").dataset.id), k = inp.dataset.k;
+    if (k === "name") x.name = inp.value.trim() || x.name;
+    else if (k === "minutes") x.minutes = Math.max(0, parseInt(inp.value, 10) || 0);
+    else if (k === "since") { const d = new Date(); d.setDate(d.getDate() - (parseInt(inp.value, 10) || 0)); x.since = isoDay(d); }
+    else x.remind = /^\d{1,2}:\d{2}$/.test(inp.value.trim()) ? inp.value.trim().replace(/^(\d):/, "0$1:") : null;
+    save();
+  });
+  $app.querySelectorAll(".mini button").forEach(b => b.onclick = () => {
+    const x = habits().find(r => r.id === +b.closest(".card").dataset.id), a = b.dataset.a;
+    if (a === "rm") { if (confirm("УДАЛИТЬ?")) x.active = 0; }
+    else {
+      const arr = habits().filter(r => r.kind === "morning" && r.active !== 0).sort((p, q) => (p.seq || 0) - (q.seq || 0) || p.id - q.id);
+      const i = arr.indexOf(x), j = a === "up" ? i - 1 : i + 1;
+      if (j >= 0 && j < arr.length) { arr.forEach((r, n) => r.seq = n + 1); const t = arr[i].seq; arr[i].seq = arr[j].seq; arr[j].seq = t; }
+    }
+    save(); renderEdit();
+  });
+  $app.querySelectorAll("[data-add]").forEach(b => b.onclick = () => {
+    const k = b.dataset.add, mx = habits().reduce((m, r) => Math.max(m, r.seq || 0), 0);
+    habits().push({id: nextId("habits"), user_id: 0, name: "Новый пункт", kind: k, active: 1, remind: null,
+      minutes: k === "morning" ? 5 : k === "daily" ? 5 : 0, seq: k === "morning" ? mx + 1 : 0,
+      since: k === "quit" ? today() : null, created: today(), on_date: null, custom: 1});
+    save(); renderEdit();
+  });
+  document.getElementById("back").onclick = () => { screen = "set"; tab = "set"; render(); };
+}
+// ================================================================== ОБМЕН С БОТОМ
+function importSeed(ev) {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const d = JSON.parse(rd.result);
+      const backup = d.v === 2 && d.tables, seed = d.format === "ritual-seed" && d.tables;
+      if (!backup && !seed) throw new Error("формат");
+      if (S.seeded && !confirm("ЗАМЕНИТЬ ДАННЫЕ В ПРИЛОЖЕНИИ ДАННЫМИ ИЗ ФАЙЛА?")) return;
+      S.db = d.tables; if (backup && d.runs) S.runs = d.runs; S.seeded = true; S.timers = {}; save();
+      alert("ЗАГРУЖЕНО: " + (S.db.habits || []).length + " ПРИВЫЧЕК");
+      screen = "day"; tab = "day"; render();
+    } catch (e) { alert("НЕ ТОТ ФАЙЛ. НУЖЕН seed_ritual.json ИЛИ ritual_ДАТА.json"); }
+  };
+  rd.readAsText(f);
+}
+async function exportAll() {
+  const name = "ritual_" + today() + ".json";
+  const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
+  let sent = false;
+  try {
+    const file = new File([payload], name, {type: "application/json"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) { await navigator.share({files: [file], title: name}); sent = true; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  if (!sent) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([payload], {type: "application/json"}));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove(); sent = true;
+  }
+  S.runs.forEach(r => r.synced = true); S.lastExport = Date.now(); save(); render();
+}
