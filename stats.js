@@ -92,12 +92,36 @@ function renderHabitWeek() {
   }).join('') + '</tr>').join('');
   return '<div class="sec">СТАТИСТИКА 📊</div><div class="acts"><button id="weekprev">←</button><span>' + monday + ' — ' + dates[6] + '</span><button id="weeknext">→</button></div><div class="habit-week-scroll" style="overflow-x:auto"><table class="tbl habit-week">' + header + rows + '</table></div><div class="dim">Нажми: — → ✅ → ❌ → —.</div>';
 }
+function progressProgramsHtml() {
+  const nr=T("nicotine_reviews").slice().sort((a,b)=>a.day.localeCompare(b.day));
+  const dr=T("discover_reviews").slice().sort((a,b)=>a.day.localeCompare(b.day));
+  const weeks=[...new Set(nr.map(r=>nicotineWeek(r.day)))].filter(w=>w>=0&&w<8).sort((a,b)=>a-b);
+  const nicotine=weeks.map(w=>{
+    const records=nr.filter(r=>nicotineWeek(r.day)===w);
+    const total=records.reduce((a,r)=>a+Number(r.ml||0),0);
+    const avg=records.reduce((a,r)=>a+Number(r.craving||0),0)/records.length;
+    return "НЕДЕЛЯ "+(w+1)+": "+total.toFixed(1)+" мл за "+records.length+"/7 дн. · тяга "+avg.toFixed(1)+"/10 · ориентир "+NICOTINE_LIMITS[w]+" мл/7 дн.";
+  });
+  const grouped={};
+  dr.forEach(r=>{const k=r.topic||"Другое";(grouped[k]||(grouped[k]=[])).push(r);});
+  const ranked=Object.entries(grouped).map(([k,rs])=>({
+    k,n:rs.length,interest:rs.reduce((a,r)=>a+Number(r.interest||0),0)/rs.length,
+    satisfaction:rs.reduce((a,r)=>a+Number(r.satisfaction||0),0)/rs.length,
+    repeat:rs.filter(r=>r.repeat==="yes").length
+  })).sort((a,b)=>(b.interest+b.satisfaction)-(a.interest+a.satisfaction));
+  const interests=ranked.map(r=>r.k+": интерес "+r.interest.toFixed(1)+"/5 · после "+r.satisfaction.toFixed(1)+"/5 · повторить "+r.repeat+"/"+r.n);
+  const next=dr.length>=14?"14/14: выбери 1–2 направления из рейтинга и составь новый цикл. Автоматически новый цикл не создаётся.":"Оценено "+dr.length+"/14 экспериментов. Следующий цикл — после завершения текущего.";
+  return '<div class="sec">🚭 СВОБОДА ОТ НИКОТИНА</div><div class="pre">'+esc(nicotine.join("\\n")||"Пока нет записей")+'</div>'+
+    '<div class="dim">Неполные недели не сравнивай с полным недельным лимитом. Уменьшение мл не гарантирует пропорционального снижения усвоенного никотина.</div>'+
+    '<div class="sec">🔎 НАЙТИ СВОЁ · РЕЙТИНГ</div><div class="pre">'+esc(interests.join("\\n")||"Пока нет оценок")+'</div>'+
+    '<div class="dim">'+esc(next)+'</div>';
+}
 function renderStats() {
   _acts = [];
   const rows = historyRows(), idx = logIndex();
   const hs = habits().filter(h => h.active !== 0 && h.kind !== "morning" && !SPECIAL.includes(h.name));
   const all = hs.map(h => { const s = habitStat(idx[h.id]); return s.yAll + s.nAll ? `• ${esc(h.name.split("\n")[0].slice(0, 34))}: ✅${s.yAll} ❌${s.nAll} · ${Math.round(s.yAll / (s.yAll + s.nAll) * 100)}% · РЕКОРД 🔥${s.best}${s.first ? " · С " + s.first.slice(0, 7) : ""}` : ""; }).filter(Boolean);
-  shell(`${renderHabitWeek()}<div class="pre">${esc(statsText())}</div>
+  shell(`${renderHabitWeek()}${progressProgramsHtml()}<div class="pre">${esc(statsText())}</div>
     <div class="sec">ИСТОРИЯ ПО ГОДАМ (ЖМИ ГОД — ИТОГИ ПО МЕСЯЦАМ)</div>
     <table class="tbl"><tr><th>ГОД</th><th>СМЕН</th><th>СТАВКА+БОН.</th><th>ТРАТЫ</th><th>ИТОГО</th><th>💪</th></tr>` +
     rows.map(r => `<tr><td>${r.yy}</td><td>${r.n}</td><td>${fmtN(r.e + r.t)}</td><td>${fmtN(r.sp)}</td><td>${fmtN(r.net)}</td><td>${r.train}</td></tr>`).join("") + `</table>` +
