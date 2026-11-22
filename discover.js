@@ -72,3 +72,35 @@ function openDiscover(i) {
     save();w.remove();render();
   };
 }
+
+function startDiscoverNextCycle(){
+  const reviews=T("discover_reviews").filter(r=>r.day>=DISCOVER_START&&r.day<=discoverDay(13));
+  if(reviews.length<14){toast("СНАЧАЛА ЗАВЕРШИ 14 ЭКСПЕРИМЕНТОВ");return;}
+  const start=addDays(today(),1), old=T("plan");
+  if(old.some(e=>e.discoverNextStart===start)){toast("НОВЫЙ ЦИКЛ УЖЕ СОЗДАН");return;}
+  const groups={};reviews.forEach(r=>{const k=r.topic||"Навык";const g=groups[k]||(groups[k]={sum:0,n:0});g.sum+=Number(r.interest||0)+Number(r.satisfaction||0)+(r.repeat==="yes"?2:0);g.n++;});
+  const top=Object.entries(groups).sort((a,b)=>b[1].sum/b[1].n-a[1].sum/a[1].n).slice(0,2).map(x=>x[0]);
+  if(!top.length)return;
+  for(let i=0;i<14;i++){
+    const day=addDays(start,i),topic=top[i%top.length];
+    if(old.some(e=>e.discoverNextStart===start&&e.discoverNextIndex===i))continue;
+    old.push({id:nextId("plan"),day,title:"🔎 Найти своё · "+topic,detail:"Новый цикл: 20–30 мин. После занятия оцени интерес, удовлетворение и желание повторить.",from:1140,to:1170,color:"#b79a20",sph:"l",nopomo:true,progress:null,discoverNextStart:start,discoverNextIndex:i,discoverTopic:topic});
+  }
+  save();toast("НОВЫЙ ЦИКЛ СОЗДАН: "+top.join(" + "));render();
+}
+function openDiscoverNext(entry){
+  const day=entry.day,old=T("discover_reviews").find(r=>r.day===day),w=document.createElement("div");w.className="sheet";
+  w.innerHTML='<div style="padding:16px"><div class="title">🔎 '+esc(entry.discoverTopic)+'</div><div class="dim">'+esc(entry.detail)+'</div>'+
+  '<label class="ev-label">ИНТЕРЕС (0–5)</label><input id="ni" type="range" min="0" max="5" step="1"><span id="niv"></span>'+
+  '<label class="ev-label">УДОВЛЕТВОРЕНИЕ (0–5)</label><input id="ns" type="range" min="0" max="5" step="1"><span id="nsv"></span>'+
+  '<label class="ev-label">ПОВТОРИТЬ?</label><select id="nr"><option value="maybe">Не знаю</option><option value="yes">Да</option><option value="no">Нет</option></select>'+
+  '<div class="acts"><button id="cancel">✕</button><button id="save">💾 СОХРАНИТЬ</button></div></div>';
+  document.body.appendChild(w);const i=w.querySelector("#ni"),s=w.querySelector("#ns"),rr=w.querySelector("#nr");
+  i.value=old?old.interest:0;s.value=old?old.satisfaction:0;rr.value=old?old.repeat:"maybe";
+  const paint=()=>{w.querySelector("#niv").textContent=i.value+"/5";w.querySelector("#nsv").textContent=s.value+"/5";};i.oninput=paint;s.oninput=paint;paint();
+  w.querySelector("#cancel").onclick=()=>w.remove();w.querySelector("#save").onclick=()=>{
+    const data={day,topic:entry.discoverTopic,interest:Number(i.value),satisfaction:Number(s.value),repeat:rr.value,updatedAt:Date.now()};
+    if(old)Object.assign(old,data);else T("discover_reviews").push(data);
+    entry.progress=100;save();w.remove();render();
+  };
+}
