@@ -86,7 +86,7 @@ async function pushReviewOutbox() {
     else if (e.progress > 0) d.partial++;
     else d.unmarked++;
   });
-  const payload = JSON.stringify({version:4,updatedAt:new Date().toISOString(),notes,calendar:days,daily:Object.values(byDay).sort((a,b)=>a.day.localeCompare(b.day)),sleep});
+  const payload = JSON.stringify({version:5,updatedAt:new Date().toISOString(),notes,calendar:days,daily:Object.values(byDay).sort((a,b)=>a.day.localeCompare(b.day)),sleep,discoverReviews:T("discover_reviews").filter(r=>r.day>=cutoffDay).map(r=>({day:r.day,topic:r.topic,interest:r.interest,satisfaction:r.satisfaction,repeat:r.repeat})),nicotineReviews:T("nicotine_reviews").filter(r=>r.day>=cutoffDay).map(r=>({day:r.day,ml:r.ml,first:r.first,craving:r.craving,trigger:r.trigger}))});
   const fingerprint = payload.replace(/"updatedAt":"[^"]+"/,'"updatedAt":""');
   if (S.sync && S.sync.outboxFingerprint === fingerprint) return;
   await ghPut("outbox/dayk-review.json",payload,"DayK review "+today());
