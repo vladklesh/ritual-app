@@ -398,6 +398,29 @@ function renderEmpty() {
   document.getElementById("file").onchange = importSeed;
 }
 let cdItem = null;
+function daykSmallTasks() {
+  const now = hmNow();
+  return T("plan").filter(e => e.day === today() && !e.actual && !e.hiddenDuplicate && e.from <= nowMin() && e.bundleItems && e.bundleItems.some(i => !i.done))
+    .sort((a,b)=>a.from-b.from);
+}
+function daykSmallPanel() {
+  const events = daykSmallTasks();
+  if (!events.length) return "";
+  const rows = events.flatMap(e => {
+    let at = e.from;
+    return e.bundleItems.map((i,k) => { const start=at; at += Math.max(1,Number(i.minutes)||10); return {e,i,k,start}; });
+  }).filter(x=>!x.i.done);
+  return '<div class="item" style="font-size:20px">👛'+rows.length+' · МЕЛКИЕ ДЕЛА</div>' +
+    rows.map(x=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0"><span class="dim">'+m2hm(x.start)+'</span><span style="flex:1">'+esc(x.i.text)+'</span><button type="button" data-small="'+x.e.id+':'+x.k+'" style="background:#303030;border-radius:12px;padding:10px 14px">☐</button></div>').join("");
+}
+function daykNicotineWorkPanel() {
+  if (typeof pomoPhase !== "function") return "";
+  const p=pomoPhase();
+  if (p.ph !== "work" && p.ph !== "rest") return "";
+  const key=today()+":"+p.s, record=(S.nicotineBlocks||{})[key];
+  return '<div style="padding:12px 0"><div class="dim">'+(p.ph==="work"?"🚭 50 МИН: БЕЗ НИКОТИНА":"☕ ПЕРЕРЫВ: МОЖНО, НО НЕ ОБЯЗАТЕЛЬНО")+'</div>'+
+    (p.ph==="work"?'<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><span style="flex:1">Курил в этом блоке?</span><button data-smoke="no" style="padding:10px;border-radius:10px;background:'+(record==="no"?"#287b4e":"#303030")+'">НЕТ</button><button data-smoke="yes" style="padding:10px;border-radius:10px;background:'+(record==="yes"?"#8d4949":"#303030")+'">ДА</button></div>':"")+'</div>';
+}
 function renderDay() {
   const items = dayItems(), pend = items.filter(i => !i.status), first = pend[0];
   let body;
@@ -423,7 +446,21 @@ function renderDay() {
       ${cdItem ? '<div class="cd" id="cd"></div>' : ""}${S.priming && /прайминг/i.test(first.name) ? '<button class="btn" id="aud2">▶ 🎧 ПРАЙМИНГ</button>' : ""}${winput}<div class="acts">${btns}</div>
 `;
   }
-  shell(body + (typeof pomoBar === "function" ? pomoBar() : ""));
+  shell(body + daykSmallPanel() + daykNicotineWorkPanel() + (typeof pomoBar === "function" ? pomoBar() : ""));
+  document.querySelectorAll("[data-small]").forEach(b=>b.onclick=()=>{
+    const [id,k]=b.dataset.small.split(":");
+    const e=T("plan").find(x=>String(x.id)===id), i=e&&e.bundleItems&&e.bundleItems[Number(k)];
+    if(!i||i.done)return;
+    i.done=true;i.completedAt=Date.now();
+    e.progress=Math.round(e.bundleItems.filter(x=>x.done).length/e.bundleItems.length*100/25)*25;
+    save();render();
+  });
+  document.querySelectorAll("[data-smoke]").forEach(b=>b.onclick=()=>{
+    const p=pomoPhase();if(p.ph!=="work")return;
+    S.nicotineBlocks=S.nicotineBlocks||{};
+    S.nicotineBlocks[today()+":"+p.s]=b.dataset.smoke;
+    save();render();
+  });
   document.querySelectorAll(".acts button").forEach(b => b.onclick = () => {
     if (first.typ === "eb") { if (b.dataset.a === "eve") { if (S.run) {screen="run";render();} else startEveningRun(); } return; }
     if (first.typ === "mb") {
