@@ -42,7 +42,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
       }
       S.sync.shopErr = null;
     } catch (e) { S.sync.shopErr = String(e.message || e).slice(0,80); }
-    try { await pullInbox(); daykNormalizePlan(); S.sync.inboxErr = null; }
+    try { await pullInbox(); daykNormalizePlan(); daykPlanTomorrow(); S.sync.inboxErr = null; }
     catch (e) { S.sync.inboxErr = String(e.message || e).slice(0,80); }
     try { await pushReviewOutbox(); S.sync.reviewErr = null; }
     catch (e) { S.sync.reviewErr = String(e.message || e).slice(0,80); }
@@ -240,6 +240,15 @@ function daykCarryForward() {
     added++;
   }
   if (added) save();
+}
+function daykPlanTomorrow() {
+  const next = addDays(today(), 1);
+  S.sync = S.sync || {};
+  if (S.sync.plannedTomorrow === next) return;
+  if (typeof fillFreeDay !== "function") return;
+  fillFreeDay(next, true);
+  S.sync.plannedTomorrow = next;
+  save();
 }
 function syncTick() {
   if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
