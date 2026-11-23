@@ -78,7 +78,6 @@ function fillFreeDay(day) {
   const candidates = [
     {title:"10 билетов ПДД", mins:30, start:600, sph:"p", color:PCOL[3]},
     {title:"20 минут прогулки без телефона", mins:20, start:780, sph:"h", color:PCOL[0]},
-    {title:"45 минут: проверить 3 объявления субаренды", mins:45, start:900, sph:"f", color:PCOL[2]},
     {title:"Мелочи", mins:15, start:1080, sph:"e", color:PCOL[6], detail:"Убрать стол — 5 мин; подготовить одежду — 5 мин; помыть посуду — 5 мин"}
   ];
   const existing = planOf(day).filter(e => !e.spill);
