@@ -74,26 +74,28 @@ function layout(evs) {                            // раскладка пере
 
 // Заполняем только действительно свободные интервалы, не трогая существующие записи.
 function fillFreeDay(day, quiet = false) {
-  if (T("work_days").some(w => w.day === day)) { if (!quiet) toast("ЕСТЬ СМЕНА: АВТОЗАПОЛНЕНИЕ НЕ НУЖНО"); return; }
+  if (T("work_days").some(w => w.day === day)) return;
+  const events = T("plan");
+  const wd = new Date(day + "T12:00:00").getDay();
   const candidates = [
-    {title:"10 билетов ПДД", mins:30, start:600, sph:"p", color:PCOL[3]},
-    {title:"20 минут прогулки без телефона", mins:20, start:780, sph:"h", color:PCOL[0]},
-    {title:"Мелочи", mins:15, start:1080, sph:"e", color:PCOL[6], detail:"Убрать стол — 5 мин; подготовить одежду — 5 мин; помыть посуду — 5 мин"}
+    {title:"👛1",items:[{text:"ПДД: 1–2 билета",minutes:20}],start:600,sph:"p",color:PCOL[3]},
+    ...(wd === 0 ? [{title:"👛1",items:[{text:"Навести порядок дома",minutes:45}],start:780,sph:"e",color:PCOL[6]}] : [])
   ];
-  const existing = planOf(day).filter(e => !e.spill);
   let added = 0;
   for (const c of candidates) {
-    const norm = t => String(t || "").toLowerCase().replace(/[^а-яёa-z0-9]/g,"");
-    if (existing.some(e => norm(e.title).includes(norm(c.title)) || (c.title.includes("ПДД") && /пдд|билет/i.test(e.title)) || (c.title==="Мелочи" && (e.bundleItems?.length || /мелочи/i.test(e.title))))) continue;
-    let at = c.start;
-    while (at + c.mins <= 1260 && existing.some(e => e.from < at + c.mins && e.to > at)) at += 15;
-    if (at + c.mins > 1260) continue;
-    const ev = {id:nextId("plan"),day,from:at,to:at+c.mins,title:c.title,detail:c.detail || "",color:c.color,sph:c.sph,nopomo:true,daykAutoFill:true};
-    T("plan").push(ev); existing.push(ev); added++;
+    const name = c.items[0].text;
+    if (events.some(e => e.day === day && !e.hiddenDuplicate && (e.bundleItems || []).some(i => /ПДД/.test(name) ? /ПДД|билет/i.test(i.text) : /порядок/i.test(i.text))) ||
+        events.some(e => e.day === day && !e.hiddenDuplicate && (/ПДД/.test(name) ? /ПДД|билет/i.test(e.title) : /порядок/i.test(e.title)))) continue;
+    let from = c.start, duration = c.items.reduce((n,i)=>n+i.minutes,0);
+    while (from + duration <= 1260 && events.some(e => e.day === day && !e.hiddenDuplicate && e.from < from + duration && e.to > from)) from += 15;
+    if (from + duration > 1260) continue;
+    events.push({id:nextId("plan"),day,from,to:from+duration,title:c.title,detail:"",bundleItems:c.items.map(i=>({...i,done:false})),color:c.color,sph:c.sph,nopomo:true,daykAutoFill:true});
+    added++;
   }
   if (added) save();
-  if (!quiet) { toast(added ? "ДОБАВЛЕНО: " + added : "НОВЫХ СВОБОДНЫХ ЗАДАЧ НЕТ"); renderPlan(); }
+  if (!quiet) {toast(added ? "ДОБАВЛЕНО: "+added : "ЗАДАЧИ УЖЕ ЕСТЬ");renderPlan();}
 }
+
 function renderPlan() {
   planRepFill(); if (typeof workPlanSyncAll === "function") workPlanSyncAll();
   const month = pv === "m", days = month ? [] : planDays(), d0 = dObj(month ? pday : days[0]);
