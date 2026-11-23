@@ -47,7 +47,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
     try { await pushReviewOutbox(); S.sync.reviewErr = null; }
     catch (e) { S.sync.reviewErr = String(e.message || e).slice(0,80); }
     S.sync.pullAt = Date.now();
-    if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || screen === "set") render(); return; }
+    if (shopOnly) { S.sync.err = null; save(); if (tab === "work" || tab === "plan" || screen === "set") render(); return; }
     const payload = JSON.stringify({v: 2, exportedAt: new Date().toISOString(), runs: S.runs, tables: S.db});
     await ghPut("backup.json", payload, "backup " + today());
     S.sync.day = today(); S.sync.backupAt = Date.now(); S.sync.err = null; S.lastExport = Date.now();
@@ -159,6 +159,13 @@ async function pullInbox() {
   const box = await ghGetJson("inbox/tasks.json");
   if (!Array.isArray(box)) return;
   S.inboxSeen = S.inboxSeen || [];
+  // Источник истины — актуальный inbox. Удалённые AI-задачи убираем только из будущего плана и списка;
+  // историю, факты и выполненные записи сохраняем.
+  const active = new Set(box.filter(x => x && x.id).map(x => String(x.id)));
+  const removed = T("plan").filter(e => e.inboxSrc && !active.has(String(e.inboxSrc)) && !e.actual && e.progress !== 100 && e.day >= today());
+  if (removed.length) S.db.plan = T("plan").filter(e => !removed.includes(e));
+  S.db.tasks = T("tasks").filter(t => !t.src || active.has(String(t.src)) || t.done);
+  S.inboxSeen = S.inboxSeen.filter(id => active.has(String(id)));
 
   // Восстанавливаем календарные блоки для ранее полученных задач, если их импортировали только в список.
   box.filter(x => x && x.id && S.inboxSeen.includes(String(x.id)) && !T("plan").some(e => e.inboxSrc === String(x.id)))
@@ -167,7 +174,7 @@ async function pullInbox() {
   // Обновляем цвет ранее импортированных блоков, не меняя их время и прогресс.
   let recolored = false;
   T("plan").forEach(e => { if (!e.inboxSrc) return; const x = box.find(x => String(x.id) === String(e.inboxSrc)); if (!x) return; const c = inboxSphere(x); if (e.sph !== c.k || e.color !== c.c) { e.sph = c.k; e.color = c.c; recolored = true; } });
-  if (!pending.length) { S.sync.inboxAt = Date.now(); if (recolored) save(); return; }
+  if (!pending.length) { S.sync.inboxAt = Date.now(); if (recolored || removed.length) save(); return; }
   pending.forEach(x => {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
     if (!T("tasks").some(t => t.src === String(x.id))) T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
@@ -237,7 +244,7 @@ function daykCarryForward() {
 function syncTick() {
   if (!S.gh || !S.gh.token || syncBusy || Date.now() < syncNext) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-  const sy = S.sync || {}, daily = sy.day !== today(), pull = !sy.pullAt || Date.now() - sy.pullAt > 20 * 60000;
+  const sy = S.sync || {}, daily = sy.day !== today(), pull = !sy.pullAt || Date.now() - sy.pullAt > 2 * 60000;
   if (!daily && !pull) return;
   if (daily) daykCarryForward();
   syncNext = Date.now() + 60000; syncNow(false, !daily);
@@ -260,4 +267,5 @@ function syncSetup() {
       S.gh = {token: t, repo: GH_REPO}; S.sync = {}; save(); syncNow(true); return true; }); }, "btn") +
     (on ? b("✕ ОТКЛЮЧИТЬ", () => { S.gh = null; save(); closeTop(); render(); }, "btn") : ""));
 }
-if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("online", () => { syncNext = 0; });
+if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("online", () => { syncNext = 0; syncTick(); });
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (!document.hidden) { syncNext = 0; syncTick(); } });
