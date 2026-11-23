@@ -59,7 +59,7 @@ input::placeholder{color:var(--dim)}
 .acts button{flex:1;font-size:34px;padding:16px 0;background:var(--bar);border-radius:14px}
 .cd{font-size:56px;font-weight:200;text-align:center;font-variant-numeric:tabular-nums;padding:4px 0}
 .sec{font-size:13px;color:var(--dim);padding:14px 4px 4px;letter-spacing:.08em}
-.sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;z-index:9}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;z-index:100;isolation:isolate}
 .sheet>div{background:var(--bg);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(env(safe-area-inset-bottom) + 14px)}
 .reasons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0}
 .reasons button{font-size:34px;padding:12px 0;background:var(--bar);border-radius:12px}
@@ -108,7 +108,7 @@ input[type=time],input[type=date]{color-scheme:dark;min-height:42px}
 .cats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .cats button{font-size:30px;padding:10px 0;background:var(--bar);border-radius:12px}
 .r2 .btn{margin:0}
-.sheet>div{max-height:88vh;overflow:auto}
+.sheet>div{max-height:min(88dvh,88vh);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 textarea.ai{width:100%;font:inherit;font-size:17px;color:#fff;background:rgba(255,255,255,.12);border:0;border-radius:8px;padding:9px 10px;-webkit-user-select:text;user-select:text;resize:none}
 .aud{display:block;margin:6px auto;font-size:22px;padding:8px 22px;background:var(--bar);border-radius:12px}
 .tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl td,.tbl th{padding:5px 3px;border-bottom:1px solid rgba(255,255,255,.2);text-align:right}.tbl td:first-child,.tbl th:first-child{text-align:left}
