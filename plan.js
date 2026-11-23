@@ -73,8 +73,8 @@ function layout(evs) {                            // раскладка пере
 }
 
 // Заполняем только действительно свободные интервалы, не трогая существующие записи.
-function fillFreeDay(day) {
-  if (T("work_days").some(w => w.day === day)) { toast("ЕСТЬ СМЕНА: АВТОЗАПОЛНЕНИЕ НЕ НУЖНО"); return; }
+function fillFreeDay(day, quiet = false) {
+  if (T("work_days").some(w => w.day === day)) { if (!quiet) toast("ЕСТЬ СМЕНА: АВТОЗАПОЛНЕНИЕ НЕ НУЖНО"); return; }
   const candidates = [
     {title:"10 билетов ПДД", mins:30, start:600, sph:"p", color:PCOL[3]},
     {title:"20 минут прогулки без телефона", mins:20, start:780, sph:"h", color:PCOL[0]},
@@ -92,8 +92,7 @@ function fillFreeDay(day) {
     T("plan").push(ev); existing.push(ev); added++;
   }
   if (added) save();
-  toast(added ? "ДОБАВЛЕНО: " + added + " · МОЖНО НЕ ВЫПОЛНЯТЬ ВСЁ" : "НОВЫХ СВОБОДНЫХ ЗАДАЧ НЕТ");
-  renderPlan();
+  if (!quiet) { toast(added ? "ДОБАВЛЕНО: " + added : "НОВЫХ СВОБОДНЫХ ЗАДАЧ НЕТ"); renderPlan(); }
 }
 function renderPlan() {
   planRepFill(); if (typeof workPlanSyncAll === "function") workPlanSyncAll();
@@ -277,7 +276,7 @@ function openEv(id, day, from) {
     <div class="dim" id="ecn"></div>
     <div class="chips" id="erep">${REPS.map(x => `<button data-r="${x[0]}">${x[1]}</button>`).join("")}</div>
     <div class="ev-flags"><button id="enp" aria-label="Помодоро" title="Помодоро">🍅</button><span id="enpl" class="dim"></span></div>
-    </details><div class="acts">${id ? '<button id="edel">🗑</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
+    </details><div class="acts">${id ? '<button id="edel">🗑</button>' : ""}${id && !e.actual && e.progress !== 100 ? '<button id="emove" type="button" title="Перенести на завтра">⏩</button>' : ""}<button id="ecl">✕</button><button id="eok">✅</button></div></div>`;
   document.body.appendChild(w);
   const g = i => w.querySelector("#" + i);
   let progress = e.progress, mb = isMb(e), color = e.color, sph = planSphereKey(e.sph || (CATS.find(c => c.c === e.color) || {}).k || "") || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
@@ -319,6 +318,16 @@ function openEv(id, day, from) {
     const one = () => { S.db.plan = T("plan").filter(x => x.id !== id); done(); };
     if (r0) scope("УДАЛИТЬ ПОВТОРЯЮЩЕЕСЯ ДЕЛО", one, () => { repEnd(r0.id, e.day); done(); });
     else if (confirm("УДАЛИТЬ?")) one();
+  };
+  if (g("emove")) g("emove").onclick = () => {
+    const nd = addDays(e.day, 1), duration = Math.max(15, e.to - e.from);
+    let from = e.from;
+    const busy = T("plan").filter(x => x !== e && x.day === nd && !x.hiddenDuplicate);
+    while (from + duration <= 1440 && busy.some(x => from < x.to && from + duration > x.from)) from += 15;
+    if (from + duration > 1440) { toast("НЕТ СВОБОДНОГО ВРЕМЕНИ ЗАВТРА"); return; }
+    // Для повторяющихся дел переносим только текущий экземпляр, не всю серию.
+    e.day = nd; e.from = from; e.to = from + duration; e.progress = 0;
+    save(); w.remove(); pday = nd; renderPlan();
   };
   g("eok").onclick = () => {
     const title = g("et").value.trim();
