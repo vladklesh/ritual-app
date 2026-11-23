@@ -7,14 +7,11 @@ function nicotineDayOffset(day){return Math.round((new Date(day+"T12:00:00")-new
 function nicotineWeek(day){return Math.floor(nicotineDayOffset(day)/7);}
 function nicotineRecord(day){return T("nicotine_reviews").find(r=>r.day===day);}
 function ensureNicotinePlan(){
-  let changed=false;
-  for(let i=0;i<56;i++){
-    const day=isoDay(new Date(new Date(NICOTINE_START+"T12:00:00").getTime()+i*86400000));
-    if(T("plan").some(e=>e.nicotineDay===day||e.day===day&&/^(🚭 Контроль никотина|🚭 Свобода от никотина)/.test(e.title)))continue;
-    T("plan").push({id:nextId("plan"),day,title:"🚭 Контроль никотина",detail:"Расход POD (мл) · первая затяжка · тяга · триггер",from:1200,to:1210,color:"#16845b",sph:"h",nopomo:true,progress:null,nicotineDay:day});changed=true;
-  }
-  if(changed)save();
+  // Контроль никотина живёт в DAY, а не отдельными ежедневными событиями календаря.
+  const old = T("plan").filter(e => e.nicotineDay && e.day >= today() && e.progress !== 100 && !e.actual);
+  if (old.length) { S.db.plan = T("plan").filter(e => !old.includes(e)); save(); }
 }
+
 function openNicotine(day){
   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(day))return;
   const old=nicotineRecord(day),week=nicotineWeek(day),limit=NICOTINE_LIMITS[Math.max(0,Math.min(7,week))];
