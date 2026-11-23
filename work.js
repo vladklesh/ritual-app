@@ -392,7 +392,7 @@ function wMain() {
   const ym = today().slice(0, 7), unp = unpaidRows(), pend = pendingTransfers(), fill = workPending();
   let h = `<div class="pre">${esc(reportText(ym))}</div>`;
   if (unp.length) h += `<div class="dim" style="white-space:pre-line">${esc(unpaidLine(unp, ym))}</div>`;
-  h += `<div class="r2 ic">${B("➕", addShiftOnDate)}${B("💰", payStart)}${B("📝", () => wgo("shifts"))}${B("📊", () => wgo("rmenu"))}</div>`;
+  h += `<div class="r2 ic">${B("💰", payStart)}${B("📝", () => wgo("shifts"))}${B("📊", () => wgo("rmenu"))}</div>`;
   h += B("🗓 ГРАФИК РАБОТЫ", () => wgo("schedule", {ym: today().slice(0, 7)}));
   if (fill.length) h += B(`✍ ДОЗАПОЛНИТЬ: ${fill.length}`, () => shiftChain(fill[0].id));
   if (pend.length) {
@@ -435,7 +435,7 @@ function wSchedule() {
     const day = ym + "-" + pad(n);
     const booked = T("work_days").filter(w=>w.day===day);
     const tentative = tentativeRows().filter(w=>w.day===day);
-    const title = booked.map(w=>'✓ '+wplace(w).name).concat(tentative.map(w=>'◌ '+w.name));
+    const title = booked.map(w=>'✓ '+wplace(w).name+(w.note ? ' · '+w.note : '')).concat(tentative.map(w=>'◌ '+w.name+(w.note ? ' · '+w.note : '')));
     grid += '<button class="work-schedule-day" data-a="' + (_acts.push(()=>wgo("scheduleDay",{ym,day})) - 1) + '"><strong>'+n+'</strong>'+title.map(x=>'<small>'+esc(x.slice(0,28))+'</small>').join('')+'</button>';
   }
   grid += '</div>';
