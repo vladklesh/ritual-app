@@ -102,7 +102,14 @@ function daykTaskLabel(raw) {
   if (/вейп|фильмов и игр/i.test(t)) return "Учёт привычек";
   return t.replace(/^[^:]{1,24}:\\s*/, "").replace(/\\s*[·—–-]\\s*(?:🍅\\s*)?\\d+.*$/, "").slice(0,65).trim() || t.slice(0,65);
 }
+function daykRemoveObsolete() {
+  const old = T("plan").filter(e => e && e.day >= today() && !e.actual && e.progress !== 100 &&
+    (e.daykAutoFill && (/^Мелочи$|прогулки без телефона|10 билетов ПДД/i.test(e.title || "")) ||
+     e.inboxSrc && (/^dayk-activation-|^dayk-pdd-/.test(String(e.inboxSrc)))));
+  if (old.length) { S.db.plan = T("plan").filter(e => !old.includes(e)); save(); }
+}
 function daykNormalizePlan() {
+  daykRemoveObsolete();
   const events = T("plan"), d = today();
   let changed = false;
   const byDay = new Map();
