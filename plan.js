@@ -16,7 +16,7 @@ const PHH = 52;
 const isMb = e => !!e && !e.work && (e.mb || (/🚿/.test(e.title || "") && /🍳/.test(e.title || "")));   // утренний блок в 📅
 const calendarEventLabel = e => {
   if (isMb(e)) return "Заряд⚡️Day";
-  if (e.bundleItems && e.bundleItems.length) return "Мелочи";
+  if (e.bundleItems && e.bundleItems.length) return "👛" + e.bundleItems.length;
   if (!e.inboxSrc) return e.title;
   const raw = String(e.title || "");
   if (/пдд|билет|экзаменационн/i.test(raw)) return "10 билетов ПДД";
@@ -84,6 +84,7 @@ function fillFreeDay(day, quiet = false) {
   let added = 0;
   for (const c of candidates) {
     const name = c.items[0].text;
+    if ((S.daykRejected || []).includes(name)) continue;
     if (events.some(e => e.day === day && !e.hiddenDuplicate && (e.bundleItems || []).some(i => /ПДД/.test(name) ? /ПДД|билет/i.test(i.text) : /порядок/i.test(i.text))) ||
         events.some(e => e.day === day && !e.hiddenDuplicate && (/ПДД/.test(name) ? /ПДД|билет/i.test(e.title) : /порядок/i.test(e.title)))) continue;
     let from = c.start, duration = c.items.reduce((n,i)=>n+i.minutes,0);
@@ -317,7 +318,12 @@ function openEv(id, day, from) {
   };
   const done = () => { save(); w.remove(); renderPlan(); };
   if (id) g("edel").onclick = () => {
-    const one = () => { S.db.plan = T("plan").filter(x => x.id !== id); done(); };
+    const one = () => {
+      S.daykRejected = S.daykRejected || [];
+      const names = e.bundleItems?.length ? e.bundleItems.map(i=>i.text) : [e.title];
+      for (const name of names) if (!S.daykRejected.includes(name)) S.daykRejected.push(name);
+      S.db.plan = T("plan").filter(x => x.id !== id); done();
+    };
     if (r0) scope("УДАЛИТЬ ПОВТОРЯЮЩЕЕСЯ ДЕЛО", one, () => { repEnd(r0.id, e.day); done(); });
     else if (confirm("УДАЛИТЬ?")) one();
   };
