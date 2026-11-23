@@ -242,6 +242,7 @@ function openEv(id, day, from) {
     ${e.actual ? "" : `<div style="display:flex;justify-content:space-between;gap:4px;padding:10px 0" id="evprogress">
       ${[0,25,50,75,100].map(p => '<button type="button" data-progress="'+p+'" aria-label="'+(p===0?'Не выполнено':p+' процентов')+'" style="flex:1;min-width:0;background:#252525;border-radius:10px;padding:7px 1px;color:white">'+progressRing(p)+'<div style="font-size:11px">'+(p===0?'✕':p+'%')+'</div></button>').join("")}
     </div>`}
+    ${e.actual ? "" : '<div id="evhelp" style="display:none;padding:12px;border:1px solid #444;border-radius:12px;margin:8px 0"><div style="font-weight:600">Не получилось? Начни с малого</div><div style="font-size:12px;color:#aaa;margin:8px 0">Правило 2 минут: начни с самого простого действия. План — не факт выполнения.</div><div class="r2"><button type="button" id="evtwo">▶ 2 минуты</button><button type="button" id="evlater">↪ Завтра</button></div><div style="font-size:12px;color:#aaa;margin-top:8px">Вложения полезны, если дают навык, инструмент или возможность. Больше расходов ≠ больше дохода.</div></div>'}
     <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}" aria-label="С"><input type="time" id="eto" value="${m2hm(e.to % 1440)}" aria-label="До"></div>\n    ${e.bundleItems && e.bundleItems.length ? `<div id="evbundle">${e.bundleItems.map((it,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:7px"><input type="checkbox" data-bi="${i}" ${it.done?"checked":""}>${esc(it.text)}</label>`).join("")}</div>` : ""}\n    <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
     <textarea id="edesc" rows="2" placeholder="ДЕТАЛИ, ЗАМЕТКИ (НЕОБЯЗАТЕЛЬНО)">${esc(e.detail || "")}</textarea>
     <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
@@ -268,7 +269,9 @@ function openEv(id, day, from) {
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
   if (g("emst")) g("emst").onclick = () => { w.remove(); if (S.run) { screen = "run"; render(); } else startRun(); };
-  w.querySelectorAll("[data-progress]").forEach(b => b.onclick = () => { progress = +b.dataset.progress; paint(); });
+  w.querySelectorAll("[data-progress]").forEach(b => b.onclick = () => { progress = +b.dataset.progress; if (g("evhelp")) g("evhelp").style.display = progress === 0 ? "block" : "none"; paint(); });
+  if (g("evtwo")) g("evtwo").onclick = () => { const t = String(g("et").value || e.title || "задача").trim(); toast("2 МИНУТЫ: начни «" + t.slice(0,45) + "» прямо сейчас"); g("evhelp").style.display = "none"; };
+  if (g("evlater")) g("evlater").onclick = () => { const next = addDays(e.day, 1); g("ed").value = next; g("evhelp").style.display = "none"; toast("Дата выбрана: " + next + ". Нажми ✅ для сохранения"); };
   g("enp").onclick = () => { np = !np; paint(); };
   w.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { color = b.dataset.c; sph = b.dataset.k; paint(); });
   w.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rule = b.dataset.r; paint(); });
