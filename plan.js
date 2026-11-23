@@ -72,6 +72,30 @@ function layout(evs) {                            // раскладка пере
   return out;
 }
 
+// Заполняем только действительно свободные интервалы, не трогая существующие записи.
+function fillFreeDay(day) {
+  if (T("work_days").some(w => w.day === day)) { toast("ЕСТЬ СМЕНА: АВТОЗАПОЛНЕНИЕ НЕ НУЖНО"); return; }
+  const candidates = [
+    {title:"10 билетов ПДД", mins:30, start:600, sph:"p", color:PCOL[3]},
+    {title:"20 минут прогулки без телефона", mins:20, start:780, sph:"h", color:PCOL[0]},
+    {title:"45 минут: проверить 3 объявления субаренды", mins:45, start:900, sph:"f", color:PCOL[2]},
+    {title:"Мелочи", mins:15, start:1080, sph:"e", color:PCOL[6], detail:"Убрать стол — 5 мин; подготовить одежду — 5 мин; помыть посуду — 5 мин"}
+  ];
+  const existing = planOf(day).filter(e => !e.spill);
+  let added = 0;
+  for (const c of candidates) {
+    const norm = t => String(t || "").toLowerCase().replace(/[^а-яёa-z0-9]/g,"");
+    if (existing.some(e => norm(e.title).includes(norm(c.title)) || (c.title.includes("ПДД") && /пдд|билет/i.test(e.title)) || (c.title==="Мелочи" && (e.bundleItems?.length || /мелочи/i.test(e.title))))) continue;
+    let at = c.start;
+    while (at + c.mins <= 1260 && existing.some(e => e.from < at + c.mins && e.to > at)) at += 15;
+    if (at + c.mins > 1260) continue;
+    const ev = {id:nextId("plan"),day,from:at,to:at+c.mins,title:c.title,detail:c.detail || "",color:c.color,sph:c.sph,nopomo:true,daykAutoFill:true};
+    T("plan").push(ev); existing.push(ev); added++;
+  }
+  if (added) save();
+  toast(added ? "ДОБАВЛЕНО: " + added + " · МОЖНО НЕ ВЫПОЛНЯТЬ ВСЁ" : "НОВЫХ СВОБОДНЫХ ЗАДАЧ НЕТ");
+  renderPlan();
+}
 function renderPlan() {
   planRepFill(); if (typeof workPlanSyncAll === "function") workPlanSyncAll();
   const month = pv === "m", days = month ? [] : planDays(), d0 = dObj(month ? pday : days[0]);
@@ -106,6 +130,7 @@ function renderPlan() {
   }
   // Быстрые действия: план и фактический журнал, без изменения старых записей.
   const quick = '<div style="position:sticky;bottom:8px;z-index:20;display:flex;justify-content:flex-end;gap:10px;padding:5px 14px;pointer-events:none">' +
+    '<button id="pq-fill" title="Заполнить свободные окна" aria-label="Заполнить свободные окна" style="pointer-events:auto;border-radius:22px;padding:12px;background:#343434;color:white;font-size:20px">⚡</button>' +
     '<button id="pq-shift" title="Добавить смену" aria-label="Добавить смену" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">🤵‍♂️</button>' +
     '<button id="pq-plan" title="Добавить задачу" aria-label="Добавить задачу" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">➕</button>' +
     '<button id="pq-fact" title="Что делал" aria-label="Записать факт" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">📝</button></div>';
@@ -120,6 +145,7 @@ function renderPlan() {
     if (typeof pushReviewOutbox === "function" && S.gh && S.gh.token) pushReviewOutbox().then(() => save()).catch(() => {});
     renderPlan(); toast("🌙 ИТОГ СОХРАНЁН");
   };
+  document.getElementById("pq-fill").onclick = () => fillFreeDay(pday);
   document.getElementById("pq-shift").onclick = () => pickPlace(pid => startShift(pday, pid), true);
   document.getElementById("pq-plan").onclick = () => openEv(null, pday, Math.min(1380, Math.floor(nowMin()/30)*30));
   document.getElementById("pq-fact").onclick = () => openFact();
