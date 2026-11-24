@@ -251,8 +251,10 @@ function daykCarryForward() {
 function daykPlanTomorrow() {
   const next = addDays(today(), 1);
   S.sync = S.sync || {};
-  if (S.sync.plannedTomorrow === next) return;
+  
   if (typeof fillFreeDay !== "function") return;
+  if(typeof workPlanSyncAll==='function')workPlanSyncAll();
+  fillFreeDay(today(), true);
   fillFreeDay(next, true);
   S.sync.plannedTomorrow = next;
   save();
