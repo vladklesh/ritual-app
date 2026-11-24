@@ -409,9 +409,9 @@ function daykSmallPanel() {
   const rows = events.flatMap(e => {
     let at = e.from;
     return e.bundleItems.map((i,k) => { const start=at; at += Math.max(1,Number(i.minutes)||10); return {e,i,k,start}; });
-  }).filter(x=>!x.i.done);
+  }).filter(x=>!x.i.done && x.start<=nowMin());
   return '<div class="item" style="font-size:20px">👛'+rows.length+' · МЕЛКИЕ ДЕЛА</div>' +
-    rows.map(x=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0"><span class="dim">'+m2hm(x.start)+'</span><span style="flex:1">'+esc(x.i.text)+'</span><button type="button" data-small="'+x.e.id+':'+x.k+'" style="background:#303030;border-radius:12px;padding:10px 14px">☐</button></div>').join("");
+    rows.map(x=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0"><span class="dim">'+m2hm(x.start)+'</span><span style="flex:1">'+esc(x.i.text)+(x.i.result?'<div class="dim">Результат: '+esc(x.i.result)+'</div>':'')+'</span><button type="button" data-small="'+x.e.id+':'+x.k+'" style="background:#303030;border-radius:12px;padding:10px 14px">☐</button></div>').join("");
 }
 function daykNicotineWorkPanel() {
   if (typeof pomoPhase !== "function") return "";
