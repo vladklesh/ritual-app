@@ -3,12 +3,12 @@
 const PROGRAM = {
   0: [["Тяга рюкзака в наклоне двумя руками", 23, "12", 3], ["Сгибание на бицепс стоя", 23, "12", 3], ["Молотковые сгибания", 16, "12", 3]],
   1: [["Отжимания с рюкзаком на спине", 16, "12", 3], ["Отжимания «алмаз» с рюкзаком", 16, "12", 3], ["Отжимания уголком (ноги на стуле)", null, "10", 3]],
-  2: [["Тяга рюкзака одной рукой (каждая рука)", 23, "12", 3], ["Сгибание обратным хватом", 16, "12", 3], ["Удержание рюкзака на 90°", 16, "20 сек", 3]],
+  2: [["Тяга рюкзака одной рукой (каждая рука)", 23, "12", 3], ["Сгибание обратным хватом", 16, "12", 3], ["Обратные скручивания", null, "12", 3]],
   3: [["Приседание с рюкзаком у груди", 23, "15", 3], ["Румынская тяга", 46, "15", 3], ["Ягодичный мост с рюкзаком", 23, "15", 3]],
-  4: [["Тяга в наклоне с паузой 1 сек", 23, "10", 3], ["Медленное сгибание (опускание 4 сек)", 16, "10", 3], ["Шраги с рюкзаком", 23, "20/20/15", 3]]
+  4: [["Тяга в наклоне с паузой 1 сек", 23, "10", 3], ["Медленное сгибание (опускание 4 сек)", 16, "10", 3], ["Шраги с рюкзаком", 23, "15", 3]]
 };
-const CIRCUIT_KG = 16, CIRCUIT_ROUNDS = 3, REST = 40, CIRCUIT_REST = 60;
-const CIRCUIT = [["Приседания", "15"], ["Отжимания", "10"], ["Тяга в наклоне", "15"], ["Сгибания на бицепс", "12"]];
+const CIRCUIT_KG = 16, CIRCUIT_ROUNDS = 3, REST = 90, CIRCUIT_REST = 60;
+const CIRCUIT = [["Приседания", "15"], ["Отжимания", "10"], ["Тяга в наклоне", "15"], ["Обратные скручивания", "12"]];
 const TEMPO_DEFAULT = "темп 3-0-1 (вниз 3 с, вверх 1 с)";
 const TEMPO_NOTE = {
   "Удержание рюкзака на 90°": "держи дольше (+5 с)",
@@ -47,7 +47,7 @@ function buildSteps(wd, minimal) {
     const per = reps.split("/"), n = minimal ? 1 : sets;
     for (let s = 1; s <= n; s++) {
       const r = per.length === sets ? per[s - 1] : per[0], [target, unit] = parseReps(r);
-      steps.push({type: "set", ex: name, default_kg: kg, target, unit, set_no: s, total: n, rest: REST});
+      steps.push({type: "set", ex: name, default_kg: kg, target, unit, set_no: s, total: n, rest: s === n - 1 ? 60 : REST});
     }
   }
   steps[steps.length - 1].rest = 0;
@@ -87,7 +87,7 @@ function trainHabit() { return habits().find(h => h.active !== 0 && h.kind === "
 function createWeightFlags(t) {
   for (const ex in t.actual) {
     if (t.kgdef[ex] == null) continue;                    // упражнение без веса
-    if (t.actual[ex].some(([c, tg]) => tg != null && c > tg) &&
+    if (t.actual[ex].length >= 3 && t.actual[ex].every(([c, tg]) => tg != null && c >= tg + 2) &&
         !T("weight_flags").some(f => f.day === today() && f.exercise === ex))
       T("weight_flags").push({id: nextId("weight_flags"), user_id: 0, day: today(), exercise: ex, status: null});
   }
@@ -140,7 +140,7 @@ function paintTrain() {
       <button id="editkg" class="btn" style="font-size:22px;margin:4px 0 0;padding:10px">${kg != null ? kg + " КГ ✎" : "БЕЗ ВЕСА ✎"}</button>
       <div class="big clock" style="padding:2vh 0">${t.cur}</div><div class="dim" style="font-size:20px">${esc(unit.trim())}${t.cur !== st.target ? " (ПЛАН " + st.target + ")" : ""}</div>
       ${prev ? `<div class="dim">НА ПРОШЛОЙ: ${esc(String(prev).toUpperCase())}</div>` : ""}
-      ${t.minimal ? `<div class="dim">ОСТАВЬ 2 ПОВТОРА В ЗАПАСЕ</div>` : ""}
+      <div class="dim">ОСТАВЬ 1–2 ПОВТОРА В ЗАПАСЕ</div>
       ${note ? `<div class="dim" style="color:#ffb3b3;font-style:italic">🔴 ${esc(note)}</div>` : ""}
       <div class="acts"><button data-d="-3">−3</button><button data-d="-1">−1</button><button data-d="1">+1</button><button data-d="3">+3</button></div>
       <button class="btn go" id="ok" style="font-size:22px;padding:18px">ПОДХОД СДЕЛАН</button>`;
@@ -157,7 +157,7 @@ function paintTrain() {
     };
   } else {
     tv.innerHTML = `${head}<div class="item" style="padding-top:5vh">КРУГ ${st.round}/${st.total}</div>` +
-      st.items.map(([n, r]) => `<div class="card">${esc(n.toUpperCase())} — ${getKg(n, CIRCUIT_KG)} КГ — ${esc(r.toUpperCase())}</div>`).join("") +
+      st.items.map(([n, r]) => `<div class="card">${esc(n.toUpperCase())} — ${n === "Обратные скручивания" ? "БЕЗ ВЕСА" : getKg(n, CIRCUIT_KG) + " КГ"} — ${esc(r.toUpperCase())}</div>`).join("") +
       `<button class="btn go" id="ok" style="font-size:22px;padding:18px">ВЫПОЛНИЛ КРУГ</button>`;
   }
   document.getElementById("ok").onclick = doneStep;
@@ -170,7 +170,7 @@ function doneStep() {
     T("set_logs").push({user_id: 0, day: today(), exercise: st.ex, set_no: st.set_no, kg, reps});
     (t.actual[st.ex] = t.actual[st.ex] || []).push([t.cur, st.target]); t.kgdef[st.ex] = st.default_kg;
   } else {
-    st.items.forEach(([n, r]) => T("set_logs").push({user_id: 0, day: today(), exercise: n, set_no: st.round, kg: getKg(n, CIRCUIT_KG), reps: r}));
+    st.items.forEach(([n, r]) => T("set_logs").push({user_id: 0, day: today(), exercise: n, set_no: st.round, kg: n === "Обратные скручивания" ? null : getKg(n, CIRCUIT_KG), reps: r}));
   }
   t.i++; try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
   if (t.i >= t.steps.length) { finishTraining(false); return; }
