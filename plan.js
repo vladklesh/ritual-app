@@ -74,27 +74,49 @@ function layout(evs) {                            // раскладка пере
 
 // Заполняем только действительно свободные интервалы, не трогая существующие записи.
 function fillFreeDay(day, quiet = false) {
-  if (T("work_days").some(w => w.day === day)) return;
-  const events = T("plan");
-  const wd = new Date(day + "T12:00:00").getDay();
-  const candidates = [
-    {title:"👛1",items:[{text:"ПДД: 1–2 билета",minutes:20}],start:600,sph:"p",color:PCOL[3]},
-    ...(wd === 0 ? [{title:"👛1",items:[{text:"Навести порядок дома",minutes:45}],start:780,sph:"e",color:PCOL[6]}] : [])
+  if (day < today()) return;
+  const events = T("plan"), wd = new Date(day+"T12:00:00").getDay();
+  const pool = [
+    ["ПДД: 1–2 билета",15,"Разобрать ошибки и запомнить одно правило","p"],
+    ["Записать голосом историю дня",10,"Одна история с завязкой и концовкой","r"],
+    ["Практика разговора с коллегой",10,"Один разговор с открытым вопросом и уточнением","r"],
+    ["Пересказать интересную тему своими словами",20,"Три запомнившихся факта и объяснение за минуту","p"],
+    ["Практика переговоров вслух",15,"Одна отработанная формулировка предложения и ответа на возражение","r"],
+    ["Проверить личный бизнес-проект действием",25,"Один реальный контакт, тест предложения или решение владельца","f"],
+    ["Тренировка памяти: пересказ без подсказок",15,"Воспроизвести пять ключевых мыслей","p"],
+    ["Записать короткое видео с объяснением идеи",15,"Одна понятная запись до двух минут","r"],
+    ["Практика английского: разговор вслух",20,"Пять фраз, произнесённых без подсказки","p"],
+    ["Сформулировать личный результат проекта",15,"Один измеримый следующий шаг, который требует твоего участия","f"],
+    ["Свободное восстановление без экрана",20,"Отдохнуть и вернуться к делам без перегрузки","h"]
   ];
-  let added = 0;
-  for (const c of candidates) {
-    const name = c.items[0].text;
-    if ((S.daykRejected || []).includes(name)) continue;
-    if (events.some(e => e.day === day && !e.hiddenDuplicate && (e.bundleItems || []).some(i => /ПДД/.test(name) ? /ПДД|билет/i.test(i.text) : /порядок/i.test(i.text))) ||
-        events.some(e => e.day === day && !e.hiddenDuplicate && (/ПДД/.test(name) ? /ПДД|билет/i.test(e.title) : /порядок/i.test(e.title)))) continue;
-    let from = c.start, duration = c.items.reduce((n,i)=>n+i.minutes,0);
-    while (from + duration <= 1260 && events.some(e => e.day === day && !e.hiddenDuplicate && e.from < from + duration && e.to > from)) from += 15;
-    if (from + duration > 1260) continue;
-    events.push({id:nextId("plan"),day,from,to:from+duration,title:c.title,detail:"",bundleItems:c.items.map(i=>({...i,done:false})),color:c.color,sph:c.sph,nopomo:true,daykAutoFill:true});
-    added++;
+  const rejected = S.daykRejected || [];
+  const existing = planOf(day).filter(e=>!e.hiddenDuplicate);
+  const used = new Set(existing.flatMap(e=>[e.title,...(e.bundleItems||[]).map(i=>i.text)]));
+  const queue = [pool[0],...(wd===0?[["Навести порядок дома",45,"Одна выбранная зона полностью приведена в порядок","e"]]:[]),...pool.slice(1,-1).sort((a,b)=>0)];
+  const rotated=queue.slice(wd%3).concat(queue.slice(0,wd%3));
+  let added=0;
+  for(let h=9;h<21;h++){
+    const from=h*60, to=from+50;
+    if(day===today() && from<nowMin()) continue;
+    if(existing.some(e=>!(e.work && e.role==="shift") && e.from<to && e.to>from)) continue;
+    let items=[], total=0;
+    for(const x of rotated){
+      if(used.has(x[0])||rejected.includes(x[0])||total+x[1]>50)continue;
+      if(/ПДД/.test(x[0])&&existing.some(e=>/ПДД|билет/i.test(e.title||"")))continue;
+      items.push({text:x[0],minutes:x[1],result:x[2],done:false});used.add(x[0]);total+=x[1];
+      if(items.length>=3)break;
+    }
+    if(!items.length) {
+      const label="Восстановление / резерв "+m2hm(from);
+      if(rejected.includes(label)||used.has(label))continue;
+      items=[{text:label,minutes:50,result:"Восстановить силы или выполнить срочную рабочую обязанность",done:false}];total=50;
+    }
+    const cat=CATS.find(c=>c.k==="p");
+    const e={id:nextId("plan"),day,from,to:from+total,title:"👛"+items.length,detail:items.map(i=>i.text+" → "+i.result).join("\n"),bundleItems:items,color:cat.c,sph:"p",daykAutoFill:true,daykHourly:true};
+    events.push(e);existing.push(e);added++;
   }
-  if (added) save();
-  if (!quiet) {toast(added ? "ДОБАВЛЕНО: "+added : "ЗАДАЧИ УЖЕ ЕСТЬ");renderPlan();}
+  if(added)save();
+  if(!quiet){toast(added?"ДОБАВЛЕНО: "+added:"ЗАДАЧИ УЖЕ ЕСТЬ");renderPlan();}
 }
 
 function renderPlan() {
