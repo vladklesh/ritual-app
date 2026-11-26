@@ -346,7 +346,7 @@ function openEv(id, day, from) {
   if (id) g("edel").onclick = () => {
     const one = () => {
       S.daykRejected = S.daykRejected || [];
-      const names = e.bundleItems?.length ? e.bundleItems.map(i=>i.text) : [e.title];
+      const names = e.bundleItems?.length ? e.bundleItems.map(i=>i.text) : [e.title]; if(e.inboxSrc)names.push("inbox:"+String(e.inboxSrc));
       for (const name of names) if (!S.daykRejected.includes(name)) S.daykRejected.push(name);
       S.db.plan = T("plan").filter(x => x.id !== id); done();
     };
