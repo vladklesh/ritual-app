@@ -69,13 +69,17 @@ const placeLabel = p => p.rate ? `${p.name} · ${p.rate}₽/${p.unit === "hour" 
 const workRow = id => T("work_days").find(w => w.id === id);
 const wplace = w => getPlace(w.place_id) || {name: "?", rate: 0, unit: "shift"};
 const due = w => (w.earned || 0) + (w.exp || 0);
-const isHourly = p => !!p && (p.unit === "hour" || /mcg|манифик/i.test(p.name || ""));
+const isHourly = p => !!p && (p.unit === "hour" || (!p.unit && /mcg|манифик/i.test(p.name || "")));
 const ceilH = h => Math.ceil(h - 1e-9);                // часы смены округляются вверх
 const defH = w => isMCG(wplace(w)) ? 10 : 8;          // смена по умолчанию в 📅: MCG 10 ч, остальные 8 ч
 const isMCG = p => !!p && /mcg|манифик/i.test(p.name || "");
 function calcEarn(w) {                             // MCG: до 10 ч — минималка 5000₽, дальше 500₽/ч
-  const p = wplace(w); if (!isHourly(p) || w.hours == null) return;
-  const r = p.rate || 500;
+  const p = wplace(w); if(w.paid_on || w.src || w.manualEarn) return;
+  const unit=w.rateUnit || (isHourly(p)?"hour":"shift");
+  const r=w.rateValue ?? (p.rate || (isMCG(p)?500:null));
+  if(r==null)return;
+  if(unit==="shift"){w.earned=r;return;}
+  if(w.hours==null)return;
   w.earned = Math.round((isMCG(p) ? Math.max(w.hours, 10) * r : w.hours * r) * 100) / 100;
 }
 const WORK_VIEWS = ["main", "schedule", "shifts", "shift", "places", "pay", "rep", "year", "rmenu"];
@@ -393,6 +397,7 @@ function wMain() {
   let h = `<div class="pre">${esc(reportText(ym))}</div>`;
   if (unp.length) h += `<div class="dim" style="white-space:pre-line">${esc(unpaidLine(unp, ym))}</div>`;
   h += `<div class="r2 ic">${B("💰", payStart)}${B("📝", () => wgo("shifts"))}${B("📊", () => wgo("rmenu"))}</div>`;
+  h += B("⚙️ СТАВКИ КОМПАНИЙ",()=>choose("КОМПАНИЯ",places().map(p=>[placeLabel(p),()=>{closeTop();editCompanyRate(p);}])));
   h += B("🗓 ГРАФИК РАБОТЫ", () => wgo("schedule", {ym: today().slice(0, 7)}));
   if (fill.length) h += B(`✍ ДОЗАПОЛНИТЬ: ${fill.length}`, () => shiftChain(fill[0].id));
   if (pend.length) {
@@ -488,10 +493,16 @@ function wShift() {
     ${B("🗑️", () => { if (confirm("УДАЛИТЬ СМЕНУ?")) { S.db.work_days = T("work_days").filter(x => x.id !== w.id); save(); workPlanSyncAll(); wgo("shifts"); } })}
     ${B("⬅", () => wgo("shifts"))}</div>`);
 }
+function editCompanyRate(p) {
+  choose("СТАВКА · "+p.name,[["₽/ЧАС",()=>{closeTop();setCompanyRate(p,"hour");}],["₽/СМЕНА",()=>{closeTop();setCompanyRate(p,"shift");}]]);
+}
+function setCompanyRate(p,unit){askText("СТАВКА "+(unit==="hour"?"₽/ЧАС":"₽/СМЕНА"),t=>{const n=Number(t.trim().replace(",", "."));if(!t.trim()||!Number.isFinite(n)||n<=0)return false;for(const w of T("work_days"))if(w.place_id===p.id&&w.earned!=null&&w.day<today())w.manualEarn=true;p.rate=n;p.unit=unit;save();renderWork();return true;},{val:String(p.rate||"")});}
 function shiftEdit(w) {                            // ✏️ место, описание, часы (часы двигают конец смены в 📅)
   const p = wplace(w);
   sheetOf(b => `<div class="stt">✏️ ${ddmm(w.day)}</div>` +
     b(`🏢 ${esc(p.name)}`, () => { closeTop(); pickPlace(pid => { w.place_id = pid; calcEarn(w); save(); renderWork(); }, true); }, "btn") +
+    b(`💰 СУММА СМЕНЫ: ${w.earned==null?"НЕТ":fmtRub(w.earned)}`,()=>{closeTop();askText("СУММА ЗА ЭТУ СМЕНУ",t=>{const n=parseSum(t);if(n==null||n<0)return false;w.earned=n;w.manualEarn=true;save();renderWork();return true;},{val:String(w.earned??"")});},"btn") +
+    b(`⚙️ СТАВКА КОМПАНИИ: ${esc(placeLabel(p))}`,()=>{closeTop();editCompanyRate(p);},"btn") +
     b(`📝 ${esc(w.note || "ОПИСАНИЕ")}`, () => { closeTop(); askText("ОПИСАНИЕ СМЕНЫ (НАПРИМЕР: РЖД)", t => { w.note = t.trim().slice(0, 300) || null; save(); renderWork(); return true; }, {val: w.note || ""}); }, "btn") +
     b(`⏱ ${w.hours == null ? "?" : gnum(w.hours)} Ч`, () => { closeTop(); askText("СКОЛЬКО ЧАСОВ?", t => {
       const h = parseHours(t); if (h == null) { toast("НЕ ПОНЯЛ"); return false; }
@@ -640,7 +651,7 @@ function workPlanSyncAll() {
   }
   const from = addDays(today(), -3);
   T("work_days").forEach(w => { if (w.day >= from || shiftEv(w)) ch = workPlanSync(w) || ch; });
-  T("work_places").forEach(p => { if (/mcg|манифик/i.test(p.name || "") && (p.unit !== "hour" || !p.rate)) { p.unit = "hour"; p.rate = p.rate || 500; ch = true; } });
+  T("work_places").forEach(p => { if (/mcg|манифик/i.test(p.name || "") && (!p.unit || !p.rate)) { p.unit = "hour"; p.rate = p.rate || 500; ch = true; } });
   if (ch) save();
 }
 // ---------------------------------------------------------------- вс вечером: бонусы за неделю (то, чего нет в shop bot)
