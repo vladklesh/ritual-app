@@ -92,6 +92,7 @@ function fillFreeDay(day, quiet = false) {
     ["Свободное восстановление без экрана",20,"Отдохнуть и вернуться к делам без перегрузки","h"]
   ];
   const rejected = S.daykRejected || [];
+  const estimate=(name,base)=>{const samples=events.filter(e=>e.day<day).sort((a,b)=>b.day.localeCompare(a.day)).flatMap(e=>e.bundleItems||[]).filter(i=>i.text===name&&i.done&&i.actualMinutes>0&&i.actualMinutes<=120).slice(0,7).map(i=>i.actualMinutes).sort((a,b)=>a-b);return samples.length>=3?Math.max(5,Math.min(50,Math.ceil(samples[Math.floor(samples.length/2)]*1.15/5)*5)):base;};
   const existing = planOf(day).filter(e=>!e.hiddenDuplicate);
   const used = new Set(existing.flatMap(e=>[e.title,...(e.bundleItems||[]).map(i=>i.text)]));
   const queue = [pool[0],...(wd===0?[["Навести порядок дома",45,"Одна выбранная зона полностью приведена в порядок","e"]]:[]),...pool.slice(1,-1).sort((a,b)=>0)];
@@ -103,9 +104,9 @@ function fillFreeDay(day, quiet = false) {
     if(existing.some(e=>!(e.work && e.role==="shift") && e.from<to && e.to>from)) continue;
     let items=[], total=0;
     for(const x of rotated){
-      if(used.has(x[0])||rejected.includes(x[0])||total+x[1]>50)continue;
+      const minutes=estimate(x[0],x[1]);if(used.has(x[0])||rejected.includes(x[0])||total+minutes>50)continue;
       if(/ПДД/.test(x[0])&&existing.some(e=>/ПДД|билет/i.test(e.title||"")))continue;
-      items.push({text:x[0],minutes:x[1],result:x[2],done:false});used.add(x[0]);total+=x[1];
+      items.push({text:x[0],minutes,result:x[2],done:false});used.add(x[0]);total+=minutes;
       if(items.length>=3)break;
     }
     if(!items.length) continue;
@@ -317,7 +318,7 @@ function openEv(id, day, from) {
   };
   g("ewpid").onchange=()=>{g("ewnew").style.display=g("ewpid").value==="new"?"block":"none";};
   paint();
-  w.querySelectorAll("[data-bi]").forEach(b => b.onchange = () => { const it = e.bundleItems[+b.dataset.bi]; if (it) { it.done = b.checked; e.progress = Math.round(e.bundleItems.filter(x=>x.done).length / e.bundleItems.length * 100 / 25)*25; progress=e.progress; save(); paint(); } });
+  w.querySelectorAll("[data-bi]").forEach(b => b.onchange = () => { const it = e.bundleItems[+b.dataset.bi]; if (it) { it.done = b.checked; if(it.done){it.completedAt=Date.now();if(it.startedAt||it.elapsedMs)it.actualMinutes=Math.max(1,Math.round(((it.elapsedMs||0)+(it.startedAt?it.completedAt-it.startedAt:0))/60000));delete it.startedAt;}else{delete it.completedAt;delete it.actualMinutes;delete it.elapsedMs;} e.progress = Math.round(e.bundleItems.filter(x=>x.done).length / e.bundleItems.length * 100 / 25)*25; progress=e.progress; save(); paint(); } });
   w.onclick = ev => { if (ev.target === w) w.remove(); };
   g("ecl").onclick = () => w.remove();
   if (g("emst")) g("emst").onclick = () => { w.remove(); if (S.run) { screen = "run"; render(); } else startRun(); };
