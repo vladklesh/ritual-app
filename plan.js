@@ -56,8 +56,7 @@ const planOf = day => {                           // дело после пол�
 function planDays() {
   if (pv === "1") return [pday];
   if (pv === "3") return [0, 1, 2].map(k => addDays(pday, k));
-  const ws = addDays(pday, -((dObj(pday).getDay() + 6) % 7));
-  return [0, 1, 2, 3, 4, 5, 6].map(k => addDays(ws, k));
+  return [0, 1, 2, 3, 4, 5, 6].map(k => addDays(pday, k));
 }
 function layout(evs) {                            // раскладка пересекающихся дел по колонкам
   const s = evs.slice().sort((a, b) => a.from - b.from || b.to - a.to), out = [];
@@ -200,7 +199,9 @@ function renderPlan() {
       const t=ev.changedTouches[0],dx=t.clientX-g.x,dy=t.clientY-g.y;
       if(Math.abs(dx)<55||Math.abs(dx)<Math.abs(dy)*1.5)return;
       if(ev.cancelable)ev.preventDefault();
-      step(dx<0?1:-1);
+      const direction=dx<0?1:-1;
+      if(month){step(direction);return;}
+      pday=addDays(pday,direction);renderPlan();
     },{passive:false});
   }
   document.getElementById("pp").onclick = () => step(-1);
