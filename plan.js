@@ -175,6 +175,34 @@ function renderPlan() {
     else pday = addDays(pday, k * (pv === "m" ? 0 : +pv));
     pScroll = pScroll; renderPlan();
   };
+  // Horizontal swipe, without interfering with vertical scroll or long-press drag.
+  const swipeArea=document.querySelector(".pgrid");
+  if(swipeArea){
+    swipeArea.style.touchAction="pan-y";
+    let gesture=null;
+    swipeArea.addEventListener("touchstart",ev=>{
+      if(ev.touches.length!==1){gesture=null;return;}
+      const t=ev.touches[0];gesture={x:t.clientX,y:t.clientY,at:Date.now(),horizontal:false};
+    },{passive:true});
+    swipeArea.addEventListener("touchmove",ev=>{
+      if(!gesture||ev.touches.length!==1){gesture=null;return;}
+      const t=ev.touches[0],dx=t.clientX-gesture.x,dy=t.clientY-gesture.y;
+      if(!gesture.horizontal){
+        if(Date.now()-gesture.at>=450||Math.abs(dy)>12&&Math.abs(dy)>=Math.abs(dx)){gesture=null;return;}
+        if(Math.abs(dx)>14&&Math.abs(dx)>Math.abs(dy)*1.5)gesture.horizontal=true;
+      }
+      if(gesture.horizontal&&ev.cancelable)ev.preventDefault();
+    },{passive:false});
+    swipeArea.addEventListener("touchcancel",()=>{gesture=null;},{passive:true});
+    swipeArea.addEventListener("touchend",ev=>{
+      const g=gesture;gesture=null;
+      if(!g||!g.horizontal||!ev.changedTouches.length)return;
+      const t=ev.changedTouches[0],dx=t.clientX-g.x,dy=t.clientY-g.y;
+      if(Math.abs(dx)<55||Math.abs(dx)<Math.abs(dy)*1.5)return;
+      if(ev.cancelable)ev.preventDefault();
+      step(dx<0?1:-1);
+    },{passive:false});
+  }
   document.getElementById("pp").onclick = () => step(-1);
   document.getElementById("pn").onclick = () => step(1);
   document.getElementById("pt0").onclick = () => { pday = today(); pScroll = null; renderPlan(); };
