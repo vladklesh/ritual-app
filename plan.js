@@ -16,7 +16,7 @@ const PHH = 52;
 const isMb = e => !!e && !e.work && (e.mb || (/🚿/.test(e.title || "") && /🍳/.test(e.title || "")));   // утренний блок в 📅
 const calendarEventLabel = e => {
   if (isMb(e)) return "Заряд⚡️Day";
-  if (e.bundleItems && e.bundleItems.length) return "👛" + e.bundleItems.length;
+  if (e.bundleItems && e.bundleItems.length && /^👛|^Мелочи$/.test(e.title)) return e.bundleItems.map(i=>i.text).join(" · ");
   if (!e.inboxSrc) return e.title;
   const raw = String(e.title || "");
   if (/пдд|билет|экзаменационн/i.test(raw)) return "10 билетов ПДД";
@@ -76,17 +76,19 @@ function layout(evs) {                            // раскладка пере
 function fillFreeDay(day, quiet = false) {
   if (day < today()) return;
   const events = T("plan"), wd = new Date(day+"T12:00:00").getDay();
+  let migrated=false;
+  for(let k=events.length-1;k>=0;k--){const e=events[k];if(e.day!==day||!e.daykHourly||e.actual||e.progress!=null||e.bundleItems?.some(i=>i.done))continue;if(e.bundleItems?.every(i=>/^Восстановление \/ резерв/.test(i.text))){events.splice(k,1);migrated=true;}else if(/^👛/.test(e.title)){e.title=e.bundleItems.map(i=>i.text).join(" · ");migrated=true;}}
   const pool = [
     ["ПДД: 1–2 билета",15,"Разобрать ошибки и запомнить одно правило","p"],
     ["Записать голосом историю дня",10,"Одна история с завязкой и концовкой","r"],
     ["Практика разговора с коллегой",10,"Один разговор с открытым вопросом и уточнением","r"],
     ["Пересказать интересную тему своими словами",20,"Три запомнившихся факта и объяснение за минуту","p"],
     ["Практика переговоров вслух",15,"Одна отработанная формулировка предложения и ответа на возражение","r"],
-    ["Проверить личный бизнес-проект действием",25,"Один реальный контакт, тест предложения или решение владельца","f"],
+    ["Субаренда: написать собственнику выбранного объекта",25,"Отправить вопрос о разрешении субаренды и условиях договора; если объекта нет — не отправлять","f"],
     ["Тренировка памяти: пересказ без подсказок",15,"Воспроизвести пять ключевых мыслей","p"],
     ["Записать короткое видео с объяснением идеи",15,"Одна понятная запись до двух минут","r"],
     ["Практика английского: разговор вслух",20,"Пять фраз, произнесённых без подсказки","p"],
-    ["Сформулировать личный результат проекта",15,"Один измеримый следующий шаг, который требует твоего участия","f"],
+    ["DayK: проверить один сценарий на телефоне",15,"Проверить сохранение задачи и записать конкретную ошибку или успешный результат","p"],
     ["Свободное восстановление без экрана",20,"Отдохнуть и вернуться к делам без перегрузки","h"]
   ];
   const rejected = S.daykRejected || [];
@@ -106,16 +108,12 @@ function fillFreeDay(day, quiet = false) {
       items.push({text:x[0],minutes:x[1],result:x[2],done:false});used.add(x[0]);total+=x[1];
       if(items.length>=3)break;
     }
-    if(!items.length) {
-      const label="Восстановление / резерв "+m2hm(from);
-      if(rejected.includes(label)||used.has(label))continue;
-      items=[{text:label,minutes:50,result:"Восстановить силы или выполнить срочную рабочую обязанность",done:false}];total=50;
-    }
+    if(!items.length) continue;
     const cat=CATS.find(c=>c.k==="p");
-    const e={id:nextId("plan"),day,from,to:from+total,title:"👛"+items.length,detail:items.map(i=>i.text+" → "+i.result).join("\n"),bundleItems:items,color:cat.c,sph:"p",daykAutoFill:true,daykHourly:true};
+    const e={id:nextId("plan"),day,from,to:from+total,title:items.map(i=>i.text).join(" · "),detail:"",bundleItems:items,color:cat.c,sph:"p",daykAutoFill:true,daykHourly:true};
     events.push(e);existing.push(e);added++;
   }
-  if(added)save();
+  if(added||migrated)save();
   if(!quiet){toast(added?"ДОБАВЛЕНО: "+added:"ЗАДАЧИ УЖЕ ЕСТЬ");renderPlan();}
 }
 
@@ -259,7 +257,7 @@ function openShiftEv(e0, day, at) {             // смена (и дорога):
   const e = T("plan").find(x => x.work === e0.work && x.role === "shift") || e0, w = workRow(e.work);
   const sh = document.createElement("div"); sh.className = "sheet";
   sh.innerHTML = `<div><div class="stt">🤵‍♂️ СМЕНА</div>
-    <input id="st" value="${esc(e.title)}">
+    <input id="st" value="${esc(calendarEventLabel(e))}">
     <input type="date" id="sd" value="${e.day}" style="margin-top:8px">
     <div class="r2"><input type="time" id="sf" value="${m2hm(e.from)}"><input type="time" id="stt" value="${m2hm(e.to % 1440)}"></div>
     <div class="dim">КОНЕЦ РАНЬШЕ НАЧАЛА = СЛЕДУЮЩИЙ ДЕНЬ · ${gnum(Math.ceil((e.to - e.from) / 60 - 1e-9))} Ч</div>
@@ -284,7 +282,7 @@ function openEv(id, day, from) {
   if (e.work) return openShiftEv(e, day, from);
   const r0 = e.rep ? T("plan_rep").find(x => x.id === e.rep) : null;
   const w = document.createElement("div"); w.className = "sheet"; w.id = "evs";
-  w.innerHTML = `<div>
+  w.innerHTML = `<div style="padding:14px"><style>#evs input:not([type=checkbox]),#evs textarea{font-size:16px;padding:8px;min-height:0}#evs .acts button{font-size:23px;padding:10px;min-height:44px}#evs .ev-label{font-size:11px;margin:4px 0}#evs #evprogress{padding:5px 0!important}</style>
     ${isMb(e) && e.day === today() && !S.runs.some(r => r.day === today()) ? '<button class="btn go" id="emst">▶ НАЧАТЬ</button>' : ""}
     <label class="ev-label">СОБЫТИЕ</label>
     <input id="et" placeholder="НАЗВАНИЕ" value="${esc(e.title)}">
@@ -292,9 +290,9 @@ function openEv(id, day, from) {
       ${[0,25,50,75,100].map(p => '<button type="button" data-progress="'+p+'" aria-label="'+(p===0?'Не выполнено':p+' процентов')+'" style="flex:1;min-width:0;background:#252525;border-radius:10px;padding:7px 1px;color:white">'+progressRing(p)+'<div style="font-size:11px">'+(p===0?'✕':p+'%')+'</div></button>').join("")}
     </div>`}
     ${e.actual ? "" : '<div id="evhelp" style="display:none;padding:12px;border:1px solid #444;border-radius:12px;margin:8px 0"><div style="font-weight:600">Не получилось? Начни с малого</div><div style="margin:8px 0;font-size:13px">Цель: капитал 15–20 млн ₽ · свобода выбора, квартира, Audi A6</div><div id="evgoalphoto"></div><button type="button" id="evphoto" style="font-size:12px">🖼 Фото цели</button><div style="font-size:12px;color:#aaa;margin:8px 0">Правило 2 минут: начни с самого простого действия. План — не факт выполнения.</div><div class="r2"><button type="button" id="evtwo">▶ 2 минуты</button><button type="button" id="evlater">↪ Завтра</button></div><div style="font-size:12px;color:#aaa;margin-top:8px">Вложения полезны, если дают навык, инструмент или возможность. Больше расходов ≠ больше дохода.</div></div>'}
-    <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}" aria-label="С"><input type="time" id="eto" value="${m2hm(e.to % 1440)}" aria-label="До"></div>\n    ${e.bundleItems && e.bundleItems.length ? `<div id="evbundle">${e.bundleItems.map((it,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:7px"><input type="checkbox" data-bi="${i}" ${it.done?"checked":""}>${esc(it.text)}</label>`).join("")}</div>` : ""}\n    <details id="evmore"><summary style="padding:10px 0;color:#aaa">⚙️ ДОПОЛНИТЕЛЬНО</summary><label class="ev-label">ОПИСАНИЕ</label>
+    <div class="r2"><input type="time" id="ef" value="${m2hm(e.from)}" aria-label="С"><input type="time" id="eto" value="${m2hm(e.to % 1440)}" aria-label="До"></div>\n    ${e.bundleItems && e.bundleItems.length ? `<div id="evbundle">${e.bundleItems.map((it,i)=>`<label style="display:grid;grid-template-columns:24px minmax(0,1fr);align-items:start;gap:8px;padding:7px 0"><input style="width:20px;height:20px;margin:3px 0;padding:0" type="checkbox" data-bi="${i}" ${it.done?"checked":""}><span style="font-size:15px;line-height:1.3">${esc(it.text)} <small style="color:#aaa">${it.minutes?it.minutes+" мин":""}</small>${it.result?`<span style="display:block;color:#aaa;font-size:13px">Результат: ${esc(it.result)}</span>`:""}</span></label>`).join("")}</div>` : ""}\n    <label class="ev-label">ОПИСАНИЕ</label>
     <textarea id="edesc" rows="2" placeholder="ДЕТАЛИ, ЗАМЕТКИ (НЕОБЯЗАТЕЛЬНО)">${esc(e.detail || "")}</textarea>
-    <input type="date" id="ed" value="${e.day}" style="margin-top:8px">
+    <details id="evmore"><summary style="padding:6px 0;color:#aaa;font-size:14px">⚙️ ДОПОЛНИТЕЛЬНО</summary><input type="date" id="ed" value="${e.day}" style="margin-top:8px">
 
     <div class="ev-durations">${[50, 60, 120, 480].map(n => `<button data-q="${n}">${n < 60 ? n + "М" : n / 60 + "Ч"}</button>`).join("")}</div>
     <label class="ev-label">СФЕРА</label><div class="ev-spheres" id="ecol">${CATS.map(c => `<button data-c="${c.c}" data-k="${c.k}" title="${c.nm}" aria-label="${c.nm}" style="--sphere-color:${c.c}">${c.ic}</button>`).join("")}</div>
