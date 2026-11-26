@@ -9,7 +9,7 @@ const CATS = [
   {k:"l",ic:"☀️",nm:"ЯРКОСТЬ ЖИЗНИ",c:"#b79a20"},
   {k:"r",ic:"❤️",nm:"ОТНОШЕНИЯ И ОКРУЖЕНИЕ",c:"#8953ce"},
   {k:"e",ic:"🏠",nm:"СРЕДА И БЫТ",c:"#64748b"},
-  {k:"j",ic:"💼",nm:"РАБОТА",c:"#d97721"}
+  {k:"j",ic:"🤵‍♂️",nm:"РАБОТА",c:"#d97721"}
 ];
 const planSphereKey = k => ({m:"p",a:"l",c:"r",w:"j"}[k] || k);
 const PHH = 52;
@@ -152,7 +152,6 @@ function renderPlan() {
   // Быстрые действия: план и фактический журнал, без изменения старых записей.
   const quick = '<div style="position:sticky;bottom:8px;z-index:20;display:flex;justify-content:flex-end;gap:10px;padding:5px 14px;pointer-events:none">' +
     '<button id="pq-fill" title="Заполнить свободные окна" aria-label="Заполнить свободные окна" style="pointer-events:auto;border-radius:22px;padding:12px;background:#343434;color:white;font-size:20px">⚡</button>' +
-    '<button id="pq-shift" title="Добавить смену" aria-label="Добавить смену" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">🤵‍♂️</button>' +
     '<button id="pq-plan" title="Добавить задачу" aria-label="Добавить задачу" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">➕</button>' +
     '<button id="pq-fact" title="Что делал" aria-label="Записать факт" style="pointer-events:auto;border-radius:22px;padding:12px 18px;background:#343434;color:white;font-size:24px">📝</button></div>';
   const showReview = nowMin() >= 20 * 60 && !T("dayk_evening_done").some(x => x.day === today());
@@ -167,7 +166,6 @@ function renderPlan() {
     renderPlan(); toast("🌙 ИТОГ СОХРАНЁН");
   };
   document.getElementById("pq-fill").onclick = () => fillFreeDay(pday);
-  document.getElementById("pq-shift").onclick = () => pickPlace(pid => startShift(pday, pid), true);
   document.getElementById("pq-plan").onclick = () => openEv(null, pday, Math.min(1380, Math.floor(nowMin()/30)*30));
   document.getElementById("pq-fact").onclick = () => openFact();
   document.getElementById("body").classList.add("flexy");
@@ -257,7 +255,7 @@ function openShiftEv(e0, day, at) {             // смена (и дорога):
   const e = T("plan").find(x => x.work === e0.work && x.role === "shift") || e0, w = workRow(e.work);
   const sh = document.createElement("div"); sh.className = "sheet";
   sh.innerHTML = `<div><div class="stt">🤵‍♂️ СМЕНА</div>
-    <input id="st" value="${esc(calendarEventLabel(e))}">
+    <label class="ev-label">КОМПАНИЯ</label><select id="sp">${T("work_places").map(p=>`<option value="${p.id}" ${p.id===w?.place_id?"selected":""}>${esc(p.name)}</option>`).join("")}</select><label class="ev-label">ОПИСАНИЕ</label><textarea id="st" rows="2">${esc(w?.note||"")}</textarea>
     <input type="date" id="sd" value="${e.day}" style="margin-top:8px">
     <div class="r2"><input type="time" id="sf" value="${m2hm(e.from)}"><input type="time" id="stt" value="${m2hm(e.to % 1440)}"></div>
     <div class="dim">КОНЕЦ РАНЬШЕ НАЧАЛА = СЛЕДУЮЩИЙ ДЕНЬ · ${gnum(Math.ceil((e.to - e.from) / 60 - 1e-9))} Ч</div>
@@ -271,8 +269,13 @@ function openShiftEv(e0, day, at) {             // смена (и дорога):
   g("sdel").onclick = () => { if (!confirm("УДАЛИТЬ СМЕНУ?")) return; S.db.work_days = T("work_days").filter(x => x.id !== e.work); S.db.plan = T("plan").filter(x => x.work !== e.work); save(); sh.remove(); renderPlan(); };
   g("sok").onclick = () => {
     const f = hm2m(g("sf").value), t0 = hm2m(g("stt").value); if (f == null || t0 == null) return;
-    e.title = g("st").value.trim() || e.title; e.day = g("sd").value || e.day; e.from = f; e.to = t0 > f ? t0 : t0 + 1440;
-    if (w) { const p = wplace(w), nt = e.title.replace(new RegExp("^" + p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[—-]\\s*", "i"), ""); if (nt !== e.title) w.note = nt; }
+    const nd=g("sd").value||e.day;
+    if(T("work_days").some(x=>x!==w&&x.day===nd)){toast("НА ЭТУ ДАТУ УЖЕ ЕСТЬ СМЕНА");return;}
+    if(!w)return;
+    const pid=Number(g("sp").value);if(!getPlace(pid))return;
+    if(pid!==w.place_id && (w.paid_on||w.src)){toast("НЕЛЬЗЯ МЕНЯТЬ КОМПАНИЮ ОПЛАЧЕННОЙ/ИМПОРТИРОВАННОЙ СМЕНЫ");return;}
+    if(pid!==w.place_id){w.place_id=pid;w.earned=null;}
+    w.note=g("st").value.trim();e.day=nd;e.from=f;e.to=t0>f?t0:t0+1440;e._sig=null;workPlanSync(w);
     save(); sh.remove(); renderPlan();
   };
 }
@@ -284,7 +287,7 @@ function openEv(id, day, from) {
   const w = document.createElement("div"); w.className = "sheet"; w.id = "evs";
   w.innerHTML = `<div style="padding:14px"><style>#evs input:not([type=checkbox]),#evs textarea{font-size:16px;padding:8px;min-height:0}#evs .acts button{font-size:23px;padding:10px;min-height:44px}#evs .ev-label{font-size:11px;margin:4px 0}#evs #evprogress{padding:5px 0!important}</style>
     ${isMb(e) && e.day === today() && !S.runs.some(r => r.day === today()) ? '<button class="btn go" id="emst">▶ НАЧАТЬ</button>' : ""}
-    <label class="ev-label">СОБЫТИЕ</label>
+    <label class="ev-label">СОБЫТИЕ</label><div id="ework" style="display:none"><label class="ev-label">КОМПАНИЯ</label><select id="ewpid"><option value="">ВЫБРАТЬ</option>${places().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}<option value="new">➕ НОВАЯ КОМПАНИЯ</option></select><input id="ewnew" placeholder="Название компании" style="display:none"></div>
     <input id="et" placeholder="НАЗВАНИЕ" value="${esc(e.title)}">
     ${e.actual ? "" : `<div style="display:flex;justify-content:space-between;gap:4px;padding:10px 0" id="evprogress">
       ${[0,25,50,75,100].map(p => '<button type="button" data-progress="'+p+'" aria-label="'+(p===0?'Не выполнено':p+' процентов')+'" style="flex:1;min-width:0;background:#252525;border-radius:10px;padding:7px 1px;color:white">'+progressRing(p)+'<div style="font-size:11px">'+(p===0?'✕':p+'%')+'</div></button>').join("")}
@@ -304,6 +307,7 @@ function openEv(id, day, from) {
   const g = i => w.querySelector("#" + i);
   let progress = e.progress, mb = isMb(e), color = e.color, sph = planSphereKey(e.sph || (CATS.find(c => c.c === e.color) || {}).k || "") || null, np = !!e.nopomo, rule = r0 ? r0.rule : "";
   const paint = () => {
+    g("ework").style.display=sph==="j"&&!e.actual&&!id?"block":"none";
     w.querySelectorAll("[data-progress]").forEach(b => { b.style.outline = +b.dataset.progress === progress ? "2px solid #22c55e" : "none"; });
     g("enp").textContent = np ? "🚫" : "🍅";
     g("enpl").textContent = np ? "БЕЗ ПОМИДОРО" : "ПОМИДОРО ВКЛЮЧЕНО";
@@ -311,6 +315,7 @@ function openEv(id, day, from) {
     const cc = CATS.find(c => c.k === sph); w.querySelector("#ecn").textContent = cc ? cc.nm : "";
     w.querySelectorAll("[data-r]").forEach(b => { b.style.background = b.dataset.r === rule ? "#fff" : ""; b.style.color = b.dataset.r === rule ? "#000" : ""; });
   };
+  g("ewpid").onchange=()=>{g("ewnew").style.display=g("ewpid").value==="new"?"block":"none";};
   paint();
   w.querySelectorAll("[data-bi]").forEach(b => b.onchange = () => { const it = e.bundleItems[+b.dataset.bi]; if (it) { it.done = b.checked; e.progress = Math.round(e.bundleItems.filter(x=>x.done).length / e.bundleItems.length * 100 / 25)*25; progress=e.progress; save(); paint(); } });
   w.onclick = ev => { if (ev.target === w) w.remove(); };
@@ -359,12 +364,17 @@ function openEv(id, day, from) {
   };
   g("eok").onclick = () => {
     const title = g("et").value.trim();
-    if (!title) { g("et").focus(); return; }
+    if (!title && !(sph==="j"&&!id&&!e.actual)) { g("et").focus(); return; }
     const f = hm2m(g("ef").value); if (f == null) return;
     let t = hm2m(g("eto").value);
     if (t == null) return;
     if (t <= f) t += 1440; // любое окончание раньше начала — следующий день, включая сон
     const nd = g("ed").value || e.day;
+    if(sph==="j"&&!id&&!e.actual){
+      if(T("work_days").some(x=>x.day===nd)){toast("НА ЭТУ ДАТУ УЖЕ ЕСТЬ СМЕНА");return;}
+      let pid=Number(g("ewpid").value);if(g("ewpid").value==="new"){const name=g("ewnew").value.trim();if(!name){g("ewnew").focus();return;}const old=T("work_places").find(p=>p.name.toLowerCase()===name.toLowerCase());pid=old?old.id:savePlace(name,0,"shift");}if(!getPlace(pid)){toast("ВЫБЕРИ КОМПАНИЮ");return;}
+      const shift=workRow(planWork(nd,pid));shift.note=g("edesc").value.trim()||title;shift.t_from=m2hm(f);shift.t_to=m2hm(t%1440);shift.hours=ceilH((t-f)/60);calcEarn(shift);workPlanSync(shift);pday=nd;return done();
+    }
     const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; if (!x.actual) x.progress = progress; };
     pday = nd;
     if (!r0) {                                           // обычное дело (или становится повторяющимся)
