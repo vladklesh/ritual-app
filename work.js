@@ -605,7 +605,7 @@ function roadsSync(w, e) {
   if (!e) return;
   const road = (from, title) => {
     let day = e.day; while (from < 0) { day = addDays(day, -1); from += 1440; } while (from >= 1440) { day = addDays(day, 1); from -= 1440; }
-    T("plan").push({id: nextId("plan"), day, from, to: from + 60, title, color: PCOL[6], nopomo: true, work: w.id, role: "road"});
+    T("plan").push({id: nextId("plan"), day, from, to: from + 60, title, color: PCOL[6], nopomo: true, work: w.id, role: "road", sph:"j"});
   };
   road(e.from - 60, "🚇 ЕДУ НА WORK"); road(e.to, "🚇 ЕДУ HOME");
 }
@@ -619,7 +619,7 @@ function workPlanSync(w) {
       const f = hm2m(w.t_from);
       let dur = w.t_to ? ((hm2m(w.t_to) - f) % 1440 + 1440) % 1440 : 0;
       if (!dur) dur = Math.max(defH(w) * 60, (w.hours || 0) * 60);
-      if (!e) { e = {id: nextId("plan"), nopomo: true, work: w.id, role: "shift", color: PCOL[1]}; T("plan").push(e); }
+      if (!e) { e = {id: nextId("plan"), nopomo: true, work: w.id, role: "shift", sph:"j", color: PCOL[1]}; T("plan").push(e); }
       Object.assign(e, {day: w.day, from: f, to: f + dur});
       if (w.hours == null || !w.t_to) { w.t_to = m2hm((f + dur) % 1440); w.hours = ceilH(dur / 60); calcEarn(w); }
     }
@@ -631,6 +631,7 @@ function workPlanSync(w) {
 }
 function workPlanSyncAll() {
   let ch = false;
+  T("plan").forEach(e=>{if(e.work&&e.sph!=="j"){e.sph="j";ch=true;}});
   const ids = new Set(T("work_days").map(w => w.id));
   if (T("plan").some(e => e.work && (!ids.has(e.work) || !e.role))) {        // старые куски смен и удалённые смены
     const old = new Set(T("plan").filter(e => e.work && !e.role).map(e => e.work));
