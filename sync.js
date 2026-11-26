@@ -177,7 +177,8 @@ async function pullInbox() {
   // Восстанавливаем календарные блоки для ранее полученных задач, если их импортировали только в список.
   box.filter(x => x && x.id && S.inboxSeen.includes(String(x.id)) && !T("plan").some(e => e.inboxSrc === String(x.id)))
     .forEach(x => { S.inboxSeen = S.inboxSeen.filter(id => id !== String(x.id)); });
-  const pending = box.filter(x => x && x.id && x.text && !S.inboxSeen.includes(String(x.id)));
+  const rejected = new Set(S.daykRejected || []);
+  const pending = box.filter(x => x && x.id && x.text && !rejected.has(String(x.text)) && !rejected.has(String(x.text).slice(0,80)) && !rejected.has("inbox:"+String(x.id)) && !S.inboxSeen.includes(String(x.id)));
   // Обновляем цвет ранее импортированных блоков, не меняя их время и прогресс.
   let recolored = false;
   T("plan").forEach(e => { if (!e.inboxSrc) return; const x = box.find(x => String(x.id) === String(e.inboxSrc)); if (!x) return; const c = inboxSphere(x); if (e.sph !== c.k || e.color !== c.c) { e.sph = c.k; e.color = c.c; recolored = true; } });
@@ -191,7 +192,7 @@ async function pullInbox() {
       let targetDay = day;
       const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
       const cycles = match ? Math.min(4, +match[1]) : 1;
-      const duration = /пдд|билет|экзаменационн/i.test(String(x.text)) ? 30 : cycles * 60;
+      const duration = Number.isFinite(+x.minutes)&&+x.minutes>0 ? Math.min(120,Math.max(5,Math.ceil(+x.minutes/5)*5)) : /пдд|билет|экзаменационн/i.test(String(x.text)) ? 15 : cycles * 50;
       const occupied = T("plan").filter(e => e.day === day && Number.isFinite(e.from) && Number.isFinite(e.to));
       let from = 18 * 60;
       while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
@@ -207,7 +208,7 @@ async function pullInbox() {
       }
       const sphere = inboxSphere(x);
       T("plan").push({id: nextId("plan"), day: targetDay, from, to: Math.min(1440, from + duration),
-        title: String(x.text).slice(0, 80), detail: "Задача AI-Control-Center · " + cycles + " × 50/10",
+        title: String(x.text).slice(0, 80), detail: String(x.result || x.detail || ""),
         color: sphere.c, sph: sphere.k, nopomo: false, inboxSrc: String(x.id)});
     }
     S.inboxSeen.push(String(x.id));
@@ -264,7 +265,7 @@ function syncTick() {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   const sy = S.sync || {}, daily = sy.day !== today(), pull = !sy.pullAt || Date.now() - sy.pullAt > 2 * 60000;
   if (!daily && !pull) return;
-  if (daily) daykCarryForward();
+  // Перенос только вручную через кнопку ⏩.
   syncNext = Date.now() + 60000; syncNow(false, !daily);
 }
 function syncLabel() {
