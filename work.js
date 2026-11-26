@@ -570,6 +570,19 @@ function spendAsk(day, cat) {
     if (screen === "work") setTimeout(renderWork, 30); return true;
   });
 }
+const spendCatName = c => ({e:"🍱 Питание",h:"🏠 Дом",s:"📱 Связь / техника",b:"💊 Здоровье",t:"🚇 Транспорт",w:"😍 Отношения",v:"🛍️ Покупки"})[c] || "Без категории";
+function wSpendStats(){
+  const ym=wv.ym||today().slice(0,7), annual=!!wv.annual, period=annual?ym.slice(0,4):ym;
+  const rows=T("spend_log").filter(r=>String(r.day).startsWith(period)&&Number(r.amount)>0);
+  const groups=new Map();for(const r of rows){const k=CAT_ICON[r.cat]?r.cat:"other";if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);}
+  const total=rows.reduce((a,r)=>a+Number(r.amount),0);
+  const opts={ym,annual};
+  let h='<div class="title">📊 ТРАТЫ · '+esc(annual?period:MON[+ym.slice(5)-1]+" "+ym.slice(0,4))+'</div><div class="r2">'+B("◀",()=>wgo("spendstats",{ym:ymAdd(ym,annual?-12:-1),annual}))+B(annual?"МЕСЯЦ":"ГОД",()=>wgo("spendstats",{ym,annual:!annual}))+B("▶",()=>wgo("spendstats",{ym:ymAdd(ym,annual?12:1),annual}))+'</div><div class="title">'+fmtRub(total)+'</div>';
+  if(wv.cat){const rr=(groups.get(wv.cat)||[]).slice().sort((a,b)=>b.day.localeCompare(a.day));h+='<div class="sec">'+esc(spendCatName(wv.cat))+'</div>'+rr.map(r=>'<div class="pre">'+esc(ddmm(r.day)+" · "+fmtRub(Number(r.amount))+(r.note?" · "+r.note:""))+'</div>').join("")+B("⬅",()=>wgo("spendstats",opts));}
+  else {const g=[...groups].map(([cat,rr])=>({cat,sum:rr.reduce((a,r)=>a+Number(r.amount),0)})).sort((a,b)=>b.sum-a.sum);h+=g.map(x=>{const pct=total?100*x.sum/total:0;return B('<div style="display:flex;justify-content:space-between;gap:8px;font-size:15px"><span>'+esc(spendCatName(x.cat))+'</span><span>'+fmtRub(x.sum)+' · '+pct.toFixed(1)+'%</span></div><div style="height:5px;background:#444;border-radius:4px;margin-top:7px"><div style="height:5px;background:#59b879;border-radius:4px;width:'+pct+'%"></div></div>',()=>wgo("spendstats",{...opts,cat:x.cat}));}).join("")||'<div class="dim">НЕТ ЗАПИСАННЫХ ТРАТ</div>';h+=B("⬅",()=>wgo("spend"));}
+  W(h);
+}
+WEXT.spendstats=wSpendStats;
 function wSpend() {
   const costs = T("costs"), per = costs.reduce((s, c) => s + (c.per_day || 0), 0), L = [];
   if (per) L.push(`БАЗА = ${fmtN(per * 30)}/МЕС.`, "");
@@ -580,7 +593,7 @@ function wSpend() {
   }
   W(`<div class="pre">${esc(L.join("\n"))}</div><div class="r2">${B("➕ " + ddmm(today()), () => spendAdd(today()))}${B("📅 ДРУГОЙ ДЕНЬ", () => choose("ЗА КАКОЙ ДЕНЬ ЗАПИСАТЬ?",
     [...Array(14).keys()].map(k => { const d = addDays(today(), -k); return [`${ddmm(d)} ${spendCount(d) ? "−" + fmtN(spendSum(d)) : "❓"}`, () => { closeTop(); spendAdd(d); }]; })))}</div>
-    ${B("✏️ ПРАВКА", () => wgo("sday"))}`);
+    ${B("📊 ПО КАТЕГОРИЯМ", () => wgo("spendstats"))}${B("✏️ ПРАВКА", () => wgo("sday"))}`);
 }
 function wSday() {
   if (!wv.day) {
