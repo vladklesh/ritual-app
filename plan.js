@@ -400,7 +400,7 @@ function openEv(id, day, from) {
       let pid=Number(g("ewpid").value);if(g("ewpid").value==="new"){const name=g("ewnew").value.trim();if(!name){g("ewnew").focus();return;}const old=T("work_places").find(p=>p.name.toLowerCase()===name.toLowerCase());pid=old?old.id:savePlace(name,0,"shift");}if(!getPlace(pid)){toast("ВЫБЕРИ КОМПАНИЮ");return;}
       const shift=workRow(planWork(nd,pid));shift.note=g("edesc").value.trim()||title;shift.t_from=m2hm(f);shift.t_to=m2hm(t%1440);shift.hours=ceilH((t-f)/60);calcEarn(shift);workPlanSync(shift);pday=nd;return done();
     }
-    const apply = x => { x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; if (!x.actual) x.progress = progress; };
+    const apply = x => { if(x.healthSleep)x.healthSleepEdited=true; x.detail = g("edesc").value.trim().slice(0,1000); x.title = title; x.from = f; x.to = t; x.color = color; x.sph = sph; x.nopomo = np; x.mb = mb; if (!x.actual) x.progress = progress; };
     pday = nd;
     if (!r0) {                                           // обычное дело (или становится повторяющимся)
       apply(e); e.day = nd;
