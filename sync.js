@@ -29,6 +29,35 @@ async function ghPut(path, text, msg) {
     body: JSON.stringify({message: msg, content: b64utf8(text), sha})});
   if (!r.ok) throw new Error("PUT " + path + " " + r.status);
 }
+// Apple Health / Mi Fitness: import only explicit in-bed intervals, never overwrite manual entries.
+async function pullHealthSleep() {
+  const data = await ghGetJson("inbox/sleep.json");
+  if (!data) return;
+  if (data.version !== 1 || !Array.isArray(data.intervals) || data.intervals.length > 500) throw new Error("SLEEP FORMAT");
+  const intervals = data.intervals.map(i => {
+    if (!i || typeof i.start !== "string" || typeof i.end !== "string" || !/(Z|[+-]\d\d:\d\d)$/.test(i.start) || !/(Z|[+-]\d\d:\d\d)$/.test(i.end)) throw new Error("SLEEP DATE");
+    const a=Date.parse(i.start), b=Date.parse(i.end);
+    if (!Number.isFinite(a)||!Number.isFinite(b)||b<=a||b-a>86400000||b>Date.now()+60000) throw new Error("SLEEP INTERVAL");
+    return [a,b];
+  }).sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const x of intervals){const last=merged[merged.length-1];if(last&&x[0]<=last[1])last[1]=Math.max(last[1],x[1]);else merged.push(x.slice());}
+  const events=T("plan");
+  for(const [a,b] of merged){
+    const start=new Date(a), end=new Date(b), day=isoDay(start), from=start.getHours()*60+start.getMinutes();
+    const to=end.getHours()*60+end.getMinutes()+(isoDay(end)!==day?1440:0);
+    if(to<=from)continue;
+    const overlaps=events.filter(e=>e.healthSleep && !e.healthSleepEdited && Number.isFinite(e.healthStart)&&Number.isFinite(e.healthEnd)&&e.healthStart<b&&e.healthEnd>a);
+    const manual=events.some(e=>!e.healthSleep||e.healthSleepEdited ? /^(?:📝\s*)?(?:сон|спал|sleep)(?:\s|$|[💤:.,!?])/i.test(e.title||"") && (e.day===day&&e.from<to&&e.to>from || e.day===isoDay(end)&&e.day!==day&&e.from<to-1440 || e.day===addDays(day,-1)&&e.to>1440+from) : false);
+    if(manual)continue;
+    if(overlaps.length===1&&overlaps[0].healthStart===a&&overlaps[0].healthEnd===b)continue;
+    if(overlaps.some(e=>e.healthStart<a||e.healthEnd>b))continue;
+    const entry={id:overlaps.length?overlaps[0].id:nextId("plan"),day,from,to,title:"Сон",detail:"Mi Fitness / Apple Health: время в постели",color:"#475569",sph:"h",nopomo:true,actual:true,healthSleep:true,healthStart:a,healthEnd:b};
+    S.db.plan=T("plan").filter(e=>!overlaps.includes(e));T("plan").push(entry);
+  }
+  S.sync.sleepAt=Date.now();save();
+}
+
 async function syncNow(manual, shopOnly) {         // shop bot — при каждом открытии (не чаще раза в 20 мин), копия — раз в день
   if (syncBusy || !S.gh || !S.gh.token) return;
   syncBusy = true; S.sync = S.sync || {};
@@ -42,6 +71,7 @@ async function syncNow(manual, shopOnly) {         // shop bot — при каж
       }
       S.sync.shopErr = null;
     } catch (e) { S.sync.shopErr = String(e.message || e).slice(0,80); }
+    try { await pullHealthSleep(); S.sync.sleepErr=null; } catch(e) { S.sync.sleepErr=String(e.message||e).slice(0,80); }
     try { await pullInbox(); daykNormalizePlan(); daykPlanTomorrow(); S.sync.inboxErr = null; }
     catch (e) { S.sync.inboxErr = String(e.message || e).slice(0,80); }
     try { await pushReviewOutbox(); S.sync.reviewErr = null; }
