@@ -21,20 +21,7 @@ function discoverDay(i) {
   const d = new Date(DISCOVER_START+"T12:00:00"); d.setDate(d.getDate()+i); return isoDay(d);
 }
 function discoverRecord(i) { return T("discover_reviews").find(x => x.day === discoverDay(i)); }
-function ensureDiscoverPlan() {
-  let changed = false;
-  DISCOVER_ITEMS.forEach((item,i) => {
-    const day = discoverDay(i), title = "🔎 Найти своё · "+item[0];
-    const existing = T("plan").find(e => e.discoverIndex === i && e.discoverStart === DISCOVER_START);
-    if (existing) return;
-    // Do not overwrite a manually created event with the same title on the same day.
-    if (T("plan").some(e => e.day === day && e.title === title)) return;
-    T("plan").push({id:nextId("plan"),day,title,detail:item[1]+" · 20–30 мин (после тяжёлой смены 10 мин)",from:1140,to:1170,
-      color:"#b79a20",sph:"l",nopomo:true,progress:null,discoverIndex:i,discoverStart:DISCOVER_START});
-    changed = true;
-  });
-  if (changed) save();
-}
+function ensureDiscoverPlan() { /* Optional program paused in focus mode; reviews retained. */ }
 function openDiscover(i) {
   i = Number(i);
   if (!Number.isInteger(i) || i < 0 || i >= DISCOVER_ITEMS.length) return;
