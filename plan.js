@@ -77,8 +77,8 @@ function daykFocusCleanup(){
  const events=T("plan");let changed=false;
  S.daykDeferred=S.daykDeferred||[];
  for(let k=events.length-1;k>=0;k--){
- const e=events[k];if(e.day<today()||e.actual||e.work||e.progress===100||e.bundleItems?.some(i=>i.done)||/📦/.test(e.title||""))continue;
- if(!(e.daykHourly||e.daykAutoFill||e.discoverIndex!=null)||e.daykFocus)continue;
+ const e=events[k];if(e.day<"2026-11-27"||e.actual||e.work||e.progress===100||e.bundleItems?.some(i=>i.done)||/📦/.test(e.title||""))continue;
+ if(!(e.daykHourly||e.daykAutoFill||e.discoverIndex!=null||e.inboxSrc)||e.daykFocus)continue;
  if(!S.daykDeferred.some(x=>x.id===e.id&&x.day===e.day))S.daykDeferred.push({...e});
  events.splice(k,1);changed=true;
  }
