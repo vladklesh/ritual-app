@@ -116,7 +116,8 @@ function setStatus(hid, status, day) {
   save();
 }
 function quitDays(h) { return h.since ? daysBetween(h.since, today()) : 0; }
-function dayItems(day) {                     // утренние и вечерние шаги свёрнуты в ритуалы
+function dayItems(day) {
+  closeMissedHabits();                     // утренние и вечерние шаги свёрнуты в ритуалы
   const raw = dayItemsRaw(day), out = [];
   const steps = raw.filter(i => i.kind === "morning" && !SPECIAL.includes(i.name));
   const evening = raw.filter(i => i.kind === "evening");
@@ -134,6 +135,20 @@ function dayItems(day) {                     // утренние и вечерн
     out.push({typ: "mb", id: "mb", kind: "morning", name: "Заряд⚡️Day", at: ev ? m2hm(ev.from) : "00:00", minutes: 0, status: left.length ? null : "yes", steps, left});
   });
   return out;
+}
+// Close unmarked daily habits after midnight; no inferred relapse.
+function closeMissedHabits(){
+  const d=today(), first="2026-11-28";
+  let day=S.habitClosedThrough?addDays(S.habitClosedThrough,1):first;
+  if(day>=d)return;
+  for(;day<d;day=addDays(day,1)){
+    for(const it of dayItemsRaw(day)){
+      if(!it.h || it.status || it.kind==="quit" || !it.h.created || it.h.created.slice(0,10)>day)continue;
+      T("habit_logs").push({habit_id:it.id,day,status:"no",autoMissed:true});
+    }
+    S.habitClosedThrough=day;
+  }
+  save();
 }
 function dayItemsRaw(day) {
   day = day || today();
@@ -616,3 +631,5 @@ async function exportAll() {
   }
   S.runs.forEach(r => r.synced = true); S.lastExport = Date.now(); save(); render();
 }
+
+if(typeof window!=="undefined"){setInterval(()=>{if(!document.hidden)closeMissedHabits();},60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)closeMissedHabits();});}
