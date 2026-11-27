@@ -72,53 +72,41 @@ function layout(evs) {                            // раскладка пере
 }
 
 // Заполняем только действительно свободные интервалы, не трогая существующие записи.
-function fillFreeDay(day, quiet = false) {
-  if (day < today()) return;
-  const events = T("plan"), wd = new Date(day+"T12:00:00").getDay();
-  let migrated=false;
-  for(let k=events.length-1;k>=0;k--){const e=events[k];if(e.day!==day||!e.daykHourly||e.actual||e.progress!=null||e.bundleItems?.some(i=>i.done))continue;if(e.bundleItems?.every(i=>/^Восстановление \/ резерв/.test(i.text))){events.splice(k,1);migrated=true;}else if(/^👛/.test(e.title)){e.title=e.bundleItems.map(i=>i.text).join(" · ");migrated=true;}}
-  const pool = [
-    ["ПДД: 1–2 билета",15,"Разобрать ошибки и запомнить одно правило","p"],
-    ["Записать голосом историю дня",10,"Одна история с завязкой и концовкой","r"],
-    ["Практика разговора с коллегой",10,"Один разговор с открытым вопросом и уточнением","r"],
-    ["Пересказать интересную тему своими словами",20,"Три запомнившихся факта и объяснение за минуту","p"],
-    ["Практика переговоров вслух",15,"Одна отработанная формулировка предложения и ответа на возражение","r"],
-    ["Субаренда: написать собственнику выбранного объекта",25,"Отправить вопрос о разрешении субаренды и условиях договора; если объекта нет — не отправлять","f"],
-    ["Тренировка памяти: пересказ без подсказок",15,"Воспроизвести пять ключевых мыслей","p"],
-    ["Записать короткое видео с объяснением идеи",15,"Одна понятная запись до двух минут","r"],
-    ["Практика английского: разговор вслух",20,"Пять фраз, произнесённых без подсказки","p"],
-    ["DayK: проверить один сценарий на телефоне",15,"Проверить сохранение задачи и записать конкретную ошибку или успешный результат","p"],
-    ["Свободное восстановление без экрана",20,"Отдохнуть и вернуться к делам без перегрузки","h"]
-  ];
-  const rejected = S.daykRejected || [];
-  const estimate=(name,base)=>{const samples=events.filter(e=>e.day<day).sort((a,b)=>b.day.localeCompare(a.day)).flatMap(e=>e.bundleItems||[]).filter(i=>i.text===name&&i.done&&i.actualMinutes>0&&i.actualMinutes<=120).slice(0,7).map(i=>i.actualMinutes).sort((a,b)=>a-b);return samples.length>=3?Math.max(5,Math.min(50,Math.ceil(samples[Math.floor(samples.length/2)]*1.15/5)*5)):base;};
-  const existing = planOf(day).filter(e=>!e.hiddenDuplicate);
-  const used = new Set(existing.flatMap(e=>[e.title,...(e.bundleItems||[]).map(i=>i.text)]));
-  const queue = [pool[0],...(wd===0?[["Навести порядок дома",45,"Одна выбранная зона полностью приведена в порядок","e"]]:[]),...pool.slice(1,-1).sort((a,b)=>0)];
-  const rotated=queue.slice(wd%3).concat(queue.slice(0,wd%3));
-  let added=0;
-  for(let h=9;h<21;h++){
-    const from=h*60, to=from+50;
-    if(day===today() && from<nowMin()) continue;
-    if(existing.some(e=>!(e.work && e.role==="shift") && e.from<to && e.to>from)) continue;
-    let items=[], total=0;
-    for(const x of rotated){
-      const minutes=estimate(x[0],x[1]);if(used.has(x[0])||rejected.includes(x[0])||total+minutes>50)continue;
-      if(/ПДД/.test(x[0])&&existing.some(e=>/ПДД|билет/i.test(e.title||"")))continue;
-      items.push({text:x[0],minutes,result:x[2],done:false});used.add(x[0]);total+=minutes;
-      if(items.length>=3)break;
-    }
-    if(!items.length) continue;
-    const cat=CATS.find(c=>c.k==="p");
-    const e={id:nextId("plan"),day,from,to:from+total,title:items.map(i=>i.text).join(" · "),detail:"",bundleItems:items,color:cat.c,sph:"p",daykAutoFill:true,daykHourly:true};
-    events.push(e);existing.push(e);added++;
-  }
-  if(added||migrated)save();
-  if(!quiet){toast(added?"ДОБАВЛЕНО: "+added:"ЗАДАЧИ УЖЕ ЕСТЬ");renderPlan();}
+// Focus mode: archive unfinished legacy generated work, never touch manual events or boxes.
+function daykFocusCleanup(){
+ const events=T("plan");let changed=false;
+ S.daykDeferred=S.daykDeferred||[];
+ for(let k=events.length-1;k>=0;k--){
+ const e=events[k];if(e.day<today()||e.actual||e.work||e.progress===100||e.bundleItems?.some(i=>i.done)||/📦/.test(e.title||""))continue;
+ if(!(e.daykHourly||e.daykAutoFill||e.discoverIndex!=null)||e.daykFocus)continue;
+ if(!S.daykDeferred.some(x=>x.id===e.id&&x.day===e.day))S.daykDeferred.push({...e});
+ events.splice(k,1);changed=true;
+ }
+ if(changed)save();
+}
+function fillFreeDay(day,quiet=false){
+ daykFocusCleanup();
+ if(quiet)return;
+ const events=T("plan");
+ if(events.some(e=>e.daykFocus&&!e.actual&&e.progress!==100)){toast("СНАЧАЛА ЗАВЕРШИ ТЕКУЩУЮ ЗАДАЧУ");return;}
+ if(day<today())return;
+ // No speculative or generic assignments. User chooses a concrete next action.
+ askText("ГЛАВНОЕ ДЕЙСТВИЕ",t=>{
+ const title=t.trim();if(!title)return false;
+ setTimeout(()=>askText("ОЖИДАЕМЫЙ РЕЗУЛЬТАТ",v=>{
+ if(!v.trim())return false;
+ const existing=planOf(day);let from=day===today()?Math.ceil(nowMin()/10)*10:540;
+ while(from+50<=1380&&existing.some(e=>e.from<from+50&&e.to>from))from+=10;
+ if(from+50>1380){toast("НЕТ СВОБОДНОГО БЛОКА");return false;}
+ const cat=CATS.find(c=>c.k==="f")||CATS[0];
+ events.push({id:nextId("plan"),day,from,to:from+50,title,detail:v.trim(),color:cat.c,sph:cat.k,daykFocus:true});
+ save();setTimeout(renderPlan,50);return true;
+ }),50);return true;
+ });
 }
 
 function renderPlan() {
-  planRepFill(); if (typeof workPlanSyncAll === "function") workPlanSyncAll();
+  daykFocusCleanup(); planRepFill(); if (typeof workPlanSyncAll === "function") workPlanSyncAll();
   const month = pv === "m", days = month ? [] : planDays(), d0 = dObj(month ? pday : days[0]);
   const head = `<div class="phead"><button id="pp">‹</button><div class="pt">${MON[d0.getMonth()]} ${d0.getFullYear()}</div><button id="pt0">●</button><button id="pn">›</button></div>
     <div class="pviews">${[["1", "1"], ["3", "3"], ["7", "7"], ["m", "М"]].map(v => `<button data-v="${v[0]}" class="${pv === v[0] ? "on" : ""}">${v[1]}</button>`).join("")}</div>`;
