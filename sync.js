@@ -183,18 +183,20 @@ async function pullInbox() {
   let recolored = false;
   T("plan").forEach(e => { if (!e.inboxSrc) return; const x = box.find(x => String(x.id) === String(e.inboxSrc)); if (!x) return; const c = inboxSphere(x); if (e.sph !== c.k || e.color !== c.c) { e.sph = c.k; e.color = c.c; recolored = true; } });
   if (!pending.length) { S.sync.inboxAt = Date.now(); if (recolored || removed.length) save(); return; }
-  pending.forEach(x => {
+  const focusBusy=T("plan").some(e=>e.daykFocus&&!e.actual&&e.progress!==100);
+  const selected=focusBusy?[]:pending.filter(x=>x.focus===true&&String(x.result||"").trim()).slice(0,1);
+  selected.forEach(x => {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(x.day || "") ? x.day : today();
     if (!T("tasks").some(t => t.src === String(x.id))) T("tasks").push({id: nextId("tasks"), day, text: String(x.text).slice(0, 80), project_id: -1, done: 0, src: String(x.id)});
     // Календарь: создаём отдельный блок только для новых задач, не трогая существующие события.
     // Выбираем свободный вечерний час; не накладываем задачи друг на друга.
     if (!T("plan").some(e => e.inboxSrc === String(x.id))) {
-      let targetDay = day;
+      let targetDay = day < today()?today():day;
       const match = String(x.text).match(/(?:^|\\s)([1-9])\\s*помидорк/i);
       const cycles = match ? Math.min(4, +match[1]) : 1;
       const duration = Number.isFinite(+x.minutes)&&+x.minutes>0 ? Math.min(120,Math.max(5,Math.ceil(+x.minutes/5)*5)) : /пдд|билет|экзаменационн/i.test(String(x.text)) ? 15 : cycles * 50;
-      const occupied = T("plan").filter(e => e.day === day && Number.isFinite(e.from) && Number.isFinite(e.to));
-      let from = 18 * 60;
+      const occupied = T("plan").filter(e => e.day === targetDay && Number.isFinite(e.from) && Number.isFinite(e.to));
+      let from = targetDay===today()?Math.max(540,Math.ceil(nowMin()/10)*10):540;
       while (from + duration <= 1440 && occupied.some(e => from < e.to && from + duration > e.from)) from += 30;
       if (from + duration > 1440) {
         // Не перекрываем занятые интервалы: пробуем следующий день.
@@ -209,12 +211,12 @@ async function pullInbox() {
       const sphere = inboxSphere(x);
       T("plan").push({id: nextId("plan"), day: targetDay, from, to: Math.min(1440, from + duration),
         title: String(x.text).slice(0, 80), detail: String(x.result || x.detail || ""),
-        color: sphere.c, sph: sphere.k, nopomo: false, inboxSrc: String(x.id)});
+        color: sphere.c, sph: sphere.k, nopomo: false, daykFocus:true, inboxSrc: String(x.id)});
     }
     S.inboxSeen.push(String(x.id));
   });
   S.inboxSeen = S.inboxSeen.slice(-500); S.sync.inboxAt = Date.now(); save();
-  toast("📥 НОВЫЕ ЗАДАЧИ: " + pending.length + "\n" + pending.map(x => String(x.text).slice(0, 60)).join("\n"));
+  if(selected.length)toast("⚡ "+String(selected[0].text).slice(0,80));
 }
 // Перенос только актуальных AI-задач: завершённые цепочки не возобновляем.
 function daykCarryForward() {
