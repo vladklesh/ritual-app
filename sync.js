@@ -42,14 +42,21 @@ async function pullHealthSleep() {
   }).sort((a,b)=>a[0]-b[0]);
   const merged=[];
   for(const x of intervals){const last=merged[merged.length-1];if(last&&x[0]<=last[1])last[1]=Math.max(last[1],x[1]);else merged.push(x.slice());}
-  const events=T("plan");
-  for(const [a,b] of merged){
+    for(const [a,b] of merged){
     const start=new Date(a), end=new Date(b), day=isoDay(start), from=start.getHours()*60+start.getMinutes();
     const to=end.getHours()*60+end.getMinutes()+(isoDay(end)!==day?1440:0);
     if(to<=from)continue;
-    const overlaps=events.filter(e=>e.healthSleep && !e.healthSleepEdited && Number.isFinite(e.healthStart)&&Number.isFinite(e.healthEnd)&&e.healthStart<b&&e.healthEnd>a);
-    const manual=events.some(e=>!e.healthSleep||e.healthSleepEdited ? /^(?:📝\s*)?(?:сон|спал|sleep)(?:\s|$|[💤:.,!?])/i.test(e.title||"") && (e.day===day&&e.from<to&&e.to>from || e.day===isoDay(end)&&e.day!==day&&e.from<to-1440 || e.day===addDays(day,-1)&&e.to>1440+from) : false);
-    if(manual)continue;
+    const overlaps=T("plan").filter(e=>e.healthSleep && !e.healthSleepEdited && Number.isFinite(e.healthStart)&&Number.isFinite(e.healthEnd)&&e.healthStart<b&&e.healthEnd>a);
+    const manual=T("plan").filter(e=>!e.healthSleep && !e.hiddenDuplicate && /^(?:📝\s*)?(?:сон|спал|sleep)(?:\s|$|[💤:.,!?])/i.test(e.title||"") && (e.day===day&&e.from<to&&e.to>from || e.day===isoDay(end)&&e.day!==day&&e.from<to-1440 || e.day===addDays(day,-1)&&e.to>1440+from));
+    const edited=T("plan").some(e=>e.healthSleepEdited && e.healthStart<b && e.healthEnd>a);
+    if(edited)continue;
+    const finished=manual.filter(e=>{const d=new Date(e.day+"T00:00:00");d.setMinutes(e.to);return d.getTime()<=Date.now();});
+    if(manual.length!==finished.length)continue;
+    if(finished.length){
+      S.healthSleepOriginals=S.healthSleepOriginals||[];
+      for(const e of finished){if(!S.healthSleepOriginals.some(x=>x.id===e.id))S.healthSleepOriginals.push(JSON.parse(JSON.stringify(e)));}
+      S.db.plan=T("plan").filter(e=>!finished.includes(e));
+    }
     if(overlaps.length===1&&overlaps[0].healthStart===a&&overlaps[0].healthEnd===b)continue;
     if(overlaps.some(e=>e.healthStart<a||e.healthEnd>b))continue;
     const entry={id:overlaps.length?overlaps[0].id:nextId("plan"),day,from,to,title:"Сон",detail:"Mi Fitness / Apple Health: время в постели",color:"#475569",sph:"h",nopomo:true,actual:true,healthSleep:true,healthStart:a,healthEnd:b};
