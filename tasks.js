@@ -144,13 +144,23 @@ function taskSheet(t) {
 }
 
 function scalpTarget(rows,i){let v=null;for(let j=0;j<=i;j++){const r=rows[j];if(r.goal!=null)v=r.goal;else if(v!=null&&r.growth!=null)v=Math.round(v*(1+r.growth/100)*100)/100;}return v;}
+const scalpFields=[["pct","%"],["leverage","Плечо"],["roe","ROE"],["deposit","Деп"],["goal","Цель"],["pnl","PnL"]];
+function scalpValid(k,v){return Number.isFinite(v)&&(!["goal","deposit","pct","leverage"].includes(k)||v>=0)&&(k!=="pct"||v<=100);}
+function scalpPick(k,label,rows,initial,done){
+ const values=[...new Set(rows.slice().reverse().map(r=>r[k]).filter(v=>v!=null&&scalpValid(k,v)))].slice(0,8);
+ const next=v=>{closeTop();setTimeout(()=>done(v),40);};
+ choose(label,values.map(v=>[String(v),()=>next(v)]).concat([["✏️ Новое",()=>{closeTop();setTimeout(()=>askText(label,t=>{const v=t.trim()===""?null:Number(t.replace(",","."));if(v!==null&&!scalpValid(k,v))return false;setTimeout(()=>done(v),40);return true;},{val:String(initial??"")}),40);}],["Пропустить",()=>next(null)]]));
+}
+function scalpAdd(rows){
+ choose("День",Array.from({length:8},(_,i)=>{const d=addDays(today(),-i);return [ddmm(d)+(i===0?" · Сегодня":""),()=>{closeTop();const existing=rows.find(r=>r.day===d);const draft={...existing,day:d};let i=0;const next=()=>{if(i===scalpFields.length){if(existing)Object.assign(existing,draft);else rows.push(draft);save();renderTasks();return;}const [k,label]=scalpFields[i++];scalpPick(k,label,rows,draft[k],v=>{if(v!==null){draft[k]=v;if(k==="goal")delete draft.growth;}next();});};setTimeout(next,40);}];}));
+}
 function tScalp(){
  const rows=T("scalp_journal").sort((a,b)=>a.day.localeCompare(b.day));
  const num=v=>v==null?"—":String(Math.round(v*100)/100);
- const fields=[["pct","%"],["leverage","Плечо"],["roe","ROE"],["deposit","Деп"],["goal","Цель"],["pnl","PnL"]];
+ const fields=scalpFields;
  let h='<div class="title">Scalp_BingX</div><div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap"><thead><tr>'+["День",...fields.map(f=>f[1]),"Δ"].map(x=>'<th style="padding:6px">'+x+'</th>').join("")+'</tr></thead><tbody>';
- rows.forEach((r,i)=>{const goal=scalpTarget(rows,i);h+='<tr><td style="padding:6px">'+esc(ddmm(r.day))+'</td>'+fields.map(([k])=>'<td style="padding:3px;text-align:right"><button style="font-size:12px;padding:5px;min-height:32px" data-a="'+(_acts.push(()=>askText(k==="goal"?"ЦЕЛЬ USDT":fields.find(f=>f[0]===k)[1],t=>{const v=t.trim()===""?null:Number(t.replace(",","."));if(v!==null&&(!Number.isFinite(v)||(["goal","deposit","pct","leverage"].includes(k)&&v<0)||k==="pct"&&v>100))return false;r[k]=v;if(k==="goal")delete r.growth;save();renderTasks();return true;},{val:String(r[k]??"")}))-1)+'">'+num(k==="goal"?goal:r[k])+'</button></td>').join("")+'<td style="padding:5px">'+num(r.deposit!=null&&goal!=null?r.deposit-goal:null)+'</td></tr>';});
- h+='</tbody></table></div>'+B("➕ ДЕНЬ",()=>askText("ДАТА",t=>{const d=parseDateText(t);if(!d||rows.some(r=>r.day===d))return false;rows.push({day:d});save();renderTasks();return true;},{val:today()}))+B("ЦЕЛЬ · ПРОТЯНУТЬ",()=>askText("ИЗМЕНЕНИЕ ЦЕЛИ В ДЕНЬ, %",t=>{const g=Number(t.replace(",","."));if(!t.trim()||!Number.isFinite(g)||g<=-100||!rows.length||scalpTarget(rows,rows.length-1)==null)return false;setTimeout(()=>askText("СКОЛЬКО СЛЕДУЮЩИХ ДНЕЙ?",t=>{const n=Number(t);if(!Number.isInteger(n)||n<1||n>366)return false;const last=rows[rows.length-1].day;for(let i=1;i<=n;i++)rows.push({day:addDays(last,i),growth:g});save();renderTasks();return true;},{val:"30"}),30);return true;}))+B("⬅",()=>tgo("main"));
+ rows.forEach((r,i)=>{const goal=scalpTarget(rows,i);h+='<tr><td style="padding:6px">'+esc(ddmm(r.day))+'</td>'+fields.map(([k,label])=>'<td style="padding:3px;text-align:right"><button style="font-size:12px;padding:5px;min-height:32px" data-a="'+(_acts.push(()=>scalpPick(k,label,rows,k==="goal"?goal:r[k],v=>{if(v===null)return;r[k]=v;if(k==="goal")delete r.growth;save();renderTasks();}))-1)+'">'+num(k==="goal"?goal:r[k])+'</button></td>').join("")+'<td style="padding:5px">'+num(r.deposit!=null&&goal!=null?r.deposit-goal:null)+'</td></tr>';});
+ h+='</tbody></table></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+B("➕",()=>scalpAdd(rows))+B("⏬",()=>askText("ИЗМЕНЕНИЕ ЦЕЛИ В ДЕНЬ, %",t=>{const g=Number(t.replace(",","."));if(!t.trim()||!Number.isFinite(g)||g<=-100||!rows.length||scalpTarget(rows,rows.length-1)==null)return false;setTimeout(()=>askText("СКОЛЬКО СЛЕДУЮЩИХ ДНЕЙ?",t=>{const n=Number(t);if(!Number.isInteger(n)||n<1||n>366)return false;const last=rows[rows.length-1].day;for(let i=1;i<=n;i++)rows.push({day:addDays(last,i),growth:g});save();renderTasks();return true;},{val:"30"}),40);return true;}))+'</div>'+B("⬅",()=>tgo("main"));
  W(h);
 }
 TEXT.scalp=tScalp;
