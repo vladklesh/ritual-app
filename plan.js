@@ -87,6 +87,13 @@ function daykFocusCleanup(){
 function fillFreeDay(day,quiet=false){
  daykFocusCleanup();
  if(quiet)return;
+ const deferred=S.daykDeferred||[];
+ choose("⚡ ФОКУС", [["Главное действие",()=>{closeTop();setTimeout(()=>daykManualFocus(day),40);}],["Отложенные · "+deferred.length,()=>{closeTop();setTimeout(()=>daykDeferredView(day),40);}] ]);
+}
+function daykDeferredView(day){
+ const list=S.daykDeferred||[];choose("ОТЛОЖЕННЫЕ",list.map(e=>[e.title,()=>{closeTop();setTimeout(()=>choose(e.title,[["Вернуть в план",()=>{closeTop();if(T("plan").some(x=>x.daykFocus&&!x.actual&&x.progress!==100)){toast("ЗАВЕРШИ ТЕКУЩУЮ");return;}const from=day===today()?Math.ceil(nowMin()/10)*10:540;const duration=Math.min(50,Math.max(5,e.to-e.from));let start=from;while(start+duration<=1380&&planOf(day).some(x=>x.from<start+duration&&x.to>start))start+=10;if(day<today()||start+duration>1380){toast("НЕТ СВОБОДНОГО ВРЕМЕНИ");return;}T("plan").push({...e,id:nextId("plan"),day,from:start,to:start+duration,daykFocus:true,progress:null});S.daykDeferred=list.filter(x=>x!==e);save();renderPlan();}],["Удалить из отложенных",()=>{closeTop();S.daykDeferred=list.filter(x=>x!==e);save();renderPlan();}]]),40);}]).concat([["Назад",()=>closeTop()]]));
+}
+function daykManualFocus(day){
  const events=T("plan");
  if(events.some(e=>e.daykFocus&&!e.actual&&e.progress!==100)){toast("СНАЧАЛА ЗАВЕРШИ ТЕКУЩУЮ ЗАДАЧУ");return;}
  if(day<today())return;
